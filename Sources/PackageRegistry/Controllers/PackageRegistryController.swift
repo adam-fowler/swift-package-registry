@@ -15,10 +15,10 @@ struct PackageRegistryController<RegistryStorage: Storage, Repository: PackageRe
 
     func addRoutes(to group: HBRouterGroup<Context>) {
         group.get("/{scope}/{name}", use: self.list)
-        group.get("/{scope}/{name}/{version}", use: self.getMetadata)
-        group.get("/{scope}/{name}/{version}/Package.swift{swiftVersion}", use: self.getMetadataForSwiftVersion)
         group.get("/{scope}/{name}/{version}.zip", use: self.download)
+        group.get("/{scope}/{name}/{version}/Package.swift{swiftVersion}", use: self.getMetadataForSwiftVersion)
         group.get("/identifiers{url}", use: self.lookupIdentifiers)
+        group.get("/{scope}/{name}/{version}", use: self.getMetadata)
         group.put("/{scope}/{name}/{version}", use: self.createRelease)
         group.on("**", method: .options, use: self.options)
     }
@@ -33,20 +33,28 @@ struct PackageRegistryController<RegistryStorage: Storage, Repository: PackageRe
         )
     }
 
-    @Sendable func list(_: HBRequest, context: Context) async throws -> ListReleaseResponse {
+    @Sendable func list(_: HBRequest, context: Context) async throws -> HBEditedResponse<ListReleaseResponse> {
         let scope = try context.parameters.require("scope")
         let name = try context.parameters.require("name")
         let id = try PackageIdentifier(scope: scope, name: name)
         let releases = try await repository.list(id: id)
-        return .init(releases: releases.map {
+        let response = ListReleaseResponse(releases: releases.map {
             return .init(
-                url: "https://localhost:8080/repository/\(scope)/\(name)/\($0.version)", 
+                url: "https://localhost:8080/repository/\(scope)/\(name)/\($0.version)",
                 problem: $0.status.problem
             )
         })
+        var headers: HTTPFields = .init()
+        if let latestRelease = releases.max(by: { $0.version < $1.version }) {
+            headers[values: .link].append("<https://localhost:8080/repository/\(scope)/\(name)/\(latestRelease.version)>; rel=\"latest-version\"")
+        }
+        return .init(
+            headers: headers,
+            response: response
+        )
     }
 
-    @Sendable func getMetadata(_: HBRequest, context: Context) async throws -> PackageRelease {
+    @Sendable func getMetadata(_: HBRequest, context: Context) async throws -> HBEditedResponse<PackageRelease> {
         let scope = try context.parameters.require("scope")
         let name = try context.parameters.require("name")
         let version = try context.parameters.require("version", as: Version.self)
@@ -54,16 +62,48 @@ struct PackageRegistryController<RegistryStorage: Storage, Repository: PackageRe
         guard let release = try await repository.get(id: id, version: version) else {
             throw HBHTTPError(.notFound)
         }
-        return release
+        let releases = try await repository.list(id: id)
+        let sortedReleases = releases.sorted { $0.version < $1.version }
+
+        var headers: HTTPFields = .init()
+        if let latestRelease = sortedReleases.last {
+            headers[values: .link].append("<https://localhost:8080/repository/\(scope)/\(name)/\(latestRelease.version)>; rel=\"latest-version\"")
+        }
+        if let index = sortedReleases.firstIndex(where: { $0.version == version }) {
+            if index != sortedReleases.startIndex {
+                let prevIndex = sortedReleases.index(before: index)
+                let prevVersion = sortedReleases[prevIndex].version
+                headers[values: .link].append("<https://localhost:8080/repository/\(scope)/\(name)/\(prevVersion)>; rel=\"predecessor-version\"")
+            }
+            let nextIndex = sortedReleases.index(after: index)
+            if nextIndex != sortedReleases.endIndex {
+                let nextVersion = sortedReleases[nextIndex].version
+                headers[values: .link].append("<https://localhost:8080/repository/\(scope)/\(name)/\(nextVersion)>; rel=\"successor-version\"")
+            }
+        }
+        return .init(headers: headers, response: release)
     }
 
     @Sendable func getMetadataForSwiftVersion(_: HBRequest, context _: Context) async throws -> HBResponse {
         .init(status: .notFound)
     }
 
-    @Sendable func download(_: HBRequest, context _: Context) async throws -> HBResponse {
-
-        .init(status: .notFound)
+    @Sendable func download(_: HBRequest, context: Context) async throws -> HBResponse {
+        let scope = try context.parameters.require("scope")
+        let name = try context.parameters.require("name")
+        let version = try context.parameters.require("version", as: Version.self)
+        let filename = "\(scope).\(name)/\(version).zip"
+        let responseBody = try await self.storage.readFile(filename, context: context)
+        return .init(
+            status: .ok,
+            headers: [
+                .contentType: HBMediaType.applicationZip.description,
+                .contentDisposition: "attachment; filename=\"\(name)-\(version).zip\"",
+                .cacheControl: "public, immutable",
+                // .digest
+            ],
+            body: responseBody
+        )
     }
 
     @Sendable func lookupIdentifiers(_: HBRequest, context _: Context) async throws -> HBResponse {
@@ -104,11 +144,10 @@ struct PackageRegistryController<RegistryStorage: Storage, Repository: PackageRe
                 type: ProblemType.versionAlreadyExists.url,
                 detail: "a release with version \(version) already exists"
             )
-
         }
         // save release zip
         let folder = "\(scope).\(name)"
-        let filename = "\(scope).\(name)/\(version)"
+        let filename = "\(scope).\(name)/\(version).zip"
         try await storage.makeDirectory(folder, context: context)
         try await self.storage.writeFile(filename, buffer: ByteBuffer(data: createRequest.sourceArchive), context: context)
         return .init(status: .created)
