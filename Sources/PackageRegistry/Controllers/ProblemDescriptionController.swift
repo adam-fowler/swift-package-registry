@@ -7,8 +7,9 @@ enum ProblemType: String {
     case invalidPackageIdentifier = "invalid-package-identifier"
     case unsupportedAcceptVersion = "unsupported-accept-version"
     case expectionsUnsupported = "expectations-unsupported"
+    case versionAlreadyExists = "version-exists"
 
-    var url: String { "http://localhost:8080/errors/\(rawValue)" }
+    var url: String { "https://localhost:8080/errors/\(rawValue)" }
 }
 
 let errorDescriptions: [ProblemType: String] = [

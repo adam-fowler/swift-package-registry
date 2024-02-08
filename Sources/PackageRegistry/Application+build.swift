@@ -24,7 +24,10 @@ public func buildApplication(_ arguments: some AppArguments) async throws -> som
 
     let storage = FileStorage(rootFolder: "registry")
     // Add package registry endpoints
-    PackageRegistryController(storage: storage).addRoutes(to: router.group("registry"))
+    PackageRegistryController(
+        storage: storage, 
+        repository: MemoryPackageReleaseRepository()
+    ).addRoutes(to: router.group("registry"))
 
     let app = try HBApplication(
         router: router,
