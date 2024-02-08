@@ -13,7 +13,7 @@ struct VersionMiddleware<Context: HBBaseRequestContext>: HBMiddlewareProtocol {
     let acceptRegex = Regex {
         "application/vnd.swift.registry"
         Optionally {
-            "+v"
+            ".v"
             Capture {
                 OneOrMore(.digit)
             }
