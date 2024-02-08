@@ -5,16 +5,19 @@ extension HTTPField.Name {
     static var link: Self { .init("Link")! }
 }
 
-struct PacakageRegistryController {
+struct PackageRegistryController<RegistryStorage: Storage> {
     typealias Context = RequestContext
-    func addRoutes(to router: HBRouter<Context>) {
-        router.get("/{scope}/{name}", use: list)
-        router.get("/{scope}/{name}/{version}", use: getMetadata)
-        router.get("/{scope}/{name}/{version}/Package.swift{swiftVersion}", use: getMetadataForSwiftVersion)
-        router.get("/{scope}/{name}/{version}.zip", use: download)
-        router.get("/identifiers{url}", use: lookupIdentifiers)
-        router.put("/{scope}/{name}/{version}", use: createRelease)
-        router.on("**", method: .options, use: options)
+
+    let storage: RegistryStorage
+
+    func addRoutes(to group: HBRouterGroup<Context>) {
+        group.get("/{scope}/{name}", use: list)
+        group.get("/{scope}/{name}/{version}", use: getMetadata)
+        group.get("/{scope}/{name}/{version}/Package.swift{swiftVersion}", use: getMetadataForSwiftVersion)
+        group.get("/{scope}/{name}/{version}.zip", use: download)
+        group.get("/identifiers{url}", use: lookupIdentifiers)
+        group.put("/{scope}/{name}/{version}", use: createRelease)
+        group.on("**", method: .options, use: options)
     }
 
     @Sendable func options(_ request: HBRequest, context: Context) async throws -> HBResponse {
@@ -48,6 +51,11 @@ struct PacakageRegistryController {
     }
 
     @Sendable func createRelease(_ request: HBRequest, context: Context) async throws -> HBResponse {
-        .init(status: .notFound)
+        guard let contentType = request.headers[.contentType],
+            let mediaType = HBMediaType(from: contentType) else { throw HBHTTPError(.badRequest)}
+        guard case .multipartForm = mediaType else { throw HBHTTPError(.badRequest)}
+
+
+        return .init(status: .notFound)
     }
 }
