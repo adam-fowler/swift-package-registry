@@ -14,14 +14,14 @@ struct Problem: Error, Encodable, HBHTTPResponseError {
     var headers: HTTPFields { [
         .contentType: "application/problem+json",
         .contentLanguage: "en",
-        .contentVersion: "1"
+        .contentVersion: "1",
     ] }
 
     init(
-        status: HTTPResponse.Status, 
-        type: String? = nil, 
-        detail: String? = nil, 
-        title: String? = nil, 
+        status: HTTPResponse.Status,
+        type: String? = nil,
+        detail: String? = nil,
+        title: String? = nil,
         instance: String? = nil
     ) {
         self.status = status

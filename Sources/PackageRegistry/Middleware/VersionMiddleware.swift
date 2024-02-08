@@ -8,7 +8,7 @@ extension HTTPField.Name {
 
 struct VersionMiddleware<Context: HBBaseRequestContext>: HBMiddlewareProtocol {
     let version: String
-    /// Accept header regex as defined in 
+    /// Accept header regex as defined in
     /// https://github.com/apple/swift-package-manager/blob/main/Documentation/PackageRegistry/Registry.md#35-api-versioning
     let acceptRegex = Regex {
         "application/vnd.swift.registry"
@@ -29,27 +29,27 @@ struct VersionMiddleware<Context: HBBaseRequestContext>: HBMiddlewareProtocol {
     }
 
     func handle(_ request: HBRequest, context: Context, next: (HBRequest, Context) async throws -> HBResponse) async throws -> HBResponse {
-        guard let accept = request.headers[.accept] else { 
+        guard let accept = request.headers[.accept] else {
             throw Problem(
-                status: .badRequest, 
+                status: .badRequest,
                 type: ProblemType.noAcceptHeader.url,
                 detail: "A client SHOULD set the Accept header field to specify the API version of a request."
-            ) 
+            )
         }
-        guard let match = accept.wholeMatch(of: self.acceptRegex) else {
+        guard let match = accept.wholeMatch(of: acceptRegex) else {
             throw Problem(
-                status: .notAcceptable, 
+                status: .notAcceptable,
                 type: ProblemType.invalidAcceptHeader.url,
                 detail: "The Accept header field should be of the form \"application/vnd.swift.registry\" [\".v\" version] [\"+\" mediatype]\"."
-            ) 
+            )
         }
-        let (_,version) = match.output
+        let (_, version) = match.output
         if let version, version != self.version {
             throw Problem(
-                status: .badRequest, 
+                status: .badRequest,
                 type: ProblemType.unsupportedAcceptVersion.url,
                 detail: "invalid API version."
-            ) 
+            )
         }
         do {
             var response = try await next(request, context)

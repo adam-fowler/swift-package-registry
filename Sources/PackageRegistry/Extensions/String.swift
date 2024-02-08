@@ -1,7 +1,7 @@
 extension StringProtocol {
     func dropPrefix(_ prefix: String) -> Self.SubSequence {
         if hasPrefix(prefix) {
-            return self.dropFirst(prefix.count)
+            return dropFirst(prefix.count)
         } else {
             return self[...]
         }
@@ -9,7 +9,7 @@ extension StringProtocol {
 
     func dropSuffix(_ suffix: String) -> Self.SubSequence {
         if hasSuffix(suffix) {
-            return self.dropLast(suffix.count)
+            return dropLast(suffix.count)
         } else {
             return self[...]
         }

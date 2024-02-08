@@ -14,14 +14,14 @@ struct Problem: Error, Decodable {
 final class PackageRegistryTests: XCTestCase {
     struct TestArguments: AppArguments {
         var hostname: String { "localhost" }
-        var port: Int { 8080}
+        var port: Int { 8080 }
     }
 
     func testNoAcceptHeader() async throws {
         let app = try await buildApplication(TestArguments())
         try await app.test(.router) { client in
             try await client.XCTExecute(uri: "", method: .get) { response in
-                XCTAssertEqual(response.status, .badRequest) 
+                XCTAssertEqual(response.status, .badRequest)
                 let problem = try JSONDecoder().decode(Problem.self, from: response.body)
                 XCTAssertEqual(problem.type, ProblemType.noAcceptHeader.url)
                 XCTAssertEqual(response.headers[.contentVersion], "1")
@@ -34,7 +34,7 @@ final class PackageRegistryTests: XCTestCase {
         let app = try await buildApplication(TestArguments())
         try await app.test(.router) { client in
             try await client.XCTExecute(uri: "", method: .get, headers: [.accept: "application/json"]) { response in
-                XCTAssertEqual(response.status, .notAcceptable) 
+                XCTAssertEqual(response.status, .notAcceptable)
                 let problem = try JSONDecoder().decode(Problem.self, from: response.body)
                 XCTAssertEqual(problem.type, ProblemType.invalidAcceptHeader.url)
             }
@@ -45,7 +45,7 @@ final class PackageRegistryTests: XCTestCase {
         let app = try await buildApplication(TestArguments())
         try await app.test(.router) { client in
             try await client.XCTExecute(uri: "", method: .get, headers: [.accept: "application/vnd.swift.registry+v200+json"]) { response in
-                XCTAssertEqual(response.status, .badRequest) 
+                XCTAssertEqual(response.status, .badRequest)
                 let problem = try JSONDecoder().decode(Problem.self, from: response.body)
                 XCTAssertEqual(problem.type, ProblemType.unsupportedAcceptVersion.url)
             }
@@ -56,7 +56,7 @@ final class PackageRegistryTests: XCTestCase {
         let app = try await buildApplication(TestArguments())
         try await app.test(.router) { client in
             try await client.XCTExecute(uri: "", method: .get, headers: [.accept: "application/vnd.swift.registry+v1+avi"]) { response in
-                XCTAssertEqual(response.status, .notAcceptable) 
+                XCTAssertEqual(response.status, .notAcceptable)
                 let problem = try JSONDecoder().decode(Problem.self, from: response.body)
                 XCTAssertEqual(problem.type, ProblemType.invalidAcceptHeader.url)
                 XCTAssertEqual(response.headers[.contentVersion], "1")

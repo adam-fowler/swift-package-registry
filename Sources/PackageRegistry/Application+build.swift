@@ -4,8 +4,8 @@ import Logging
 import NIOSSL
 
 /// Application arguments protocol. We use a protocol so we can call
-/// `HBApplication.configure` inside Tests as well as in the App executable. 
-/// Any variables added here also have to be added to `App` in App.swift and 
+/// `HBApplication.configure` inside Tests as well as in the App executable.
+/// Any variables added here also have to be added to `App` in App.swift and
 /// `TestArguments` in AppTest.swift
 public protocol AppArguments {
     var hostname: String { get }
@@ -18,8 +18,8 @@ public func buildApplication(_ arguments: some AppArguments) async throws -> som
     let router = HBRouter(context: RequestContext.self, options: .autoGenerateHeadEndpoints)
     router.middlewares.add(HBLogRequestsMiddleware(.debug))
     router.middlewares.add(VersionMiddleware(version: "1"))
-    router.get("/health") { _,_ -> HTTPResponse.Status in
-        return .ok
+    router.get("/health") { _, _ -> HTTPResponse.Status in
+        .ok
     }
 
     let storage = FileStorage(rootFolder: "registry")
