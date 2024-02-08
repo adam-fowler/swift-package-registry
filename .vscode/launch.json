@@ -1,0 +1,28 @@
+{
+    "configurations": [
+        {
+            "type": "lldb",
+            "request": "launch",
+            "sourceLanguages": [
+                "swift"
+            ],
+            "args": [],
+            "cwd": "${workspaceFolder:PackageRegistry}",
+            "name": "Debug PackageRegistry",
+            "program": "${workspaceFolder:PackageRegistry}/.build/debug/PackageRegistry",
+            "preLaunchTask": "swift: Build Debug PackageRegistry"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "sourceLanguages": [
+                "swift"
+            ],
+            "args": [],
+            "cwd": "${workspaceFolder:PackageRegistry}",
+            "name": "Release PackageRegistry",
+            "program": "${workspaceFolder:PackageRegistry}/.build/release/PackageRegistry",
+            "preLaunchTask": "swift: Build Release PackageRegistry"
+        }
+    ]
+}
