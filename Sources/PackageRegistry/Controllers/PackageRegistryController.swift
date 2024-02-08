@@ -28,26 +28,26 @@ struct PacakageRegistryController {
     }
 
     @Sendable func list(_ request: HBRequest, context: Context) async throws -> HBResponse {
-        .init(status: .badRequest)
+        .init(status: .notFound)
     }
 
     @Sendable func getMetadata(_ request: HBRequest, context: Context) async throws -> HBResponse {
-        .init(status: .badRequest)
+        .init(status: .notFound)
     }
 
     @Sendable func getMetadataForSwiftVersion(_ request: HBRequest, context: Context) async throws -> HBResponse {
-        .init(status: .badRequest)
+        .init(status: .notFound)
     }
 
     @Sendable func download(_ request: HBRequest, context: Context) async throws -> HBResponse {
-        .init(status: .badRequest)
+        .init(status: .notFound)
     }
 
     @Sendable func lookupIdentifiers(_ request: HBRequest, context: Context) async throws -> HBResponse {
-        .init(status: .badRequest)
+        .init(status: .notFound)
     }
 
     @Sendable func createRelease(_ request: HBRequest, context: Context) async throws -> HBResponse {
-        .init(status: .badRequest)
+        .init(status: .notFound)
     }
 }
