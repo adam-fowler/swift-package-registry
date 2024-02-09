@@ -16,8 +16,8 @@ struct PackageRegistryController<RegistryStorage: Storage, Repository: PackageRe
     func addRoutes(to group: HBRouterGroup<Context>) {
         group.get("/{scope}/{name}", use: self.list)
         group.get("/{scope}/{name}/{version}.zip", use: self.download)
-        group.get("/{scope}/{name}/{version}/Package.swift{swiftVersion}", use: self.getMetadataForSwiftVersion)
-        group.get("/identifiers{url}", use: self.lookupIdentifiers)
+        group.get("/{scope}/{name}/{version}/Package.swift{swiftVersion}", use: self.getManifest)
+        group.get("/identifiers", use: self.lookupIdentifiers)
         group.get("/{scope}/{name}/{version}", use: self.getMetadata)
         group.put("/{scope}/{name}/{version}", use: self.createRelease)
         group.on("**", method: .options, use: self.options)
@@ -28,7 +28,7 @@ struct PackageRegistryController<RegistryStorage: Storage, Repository: PackageRe
             status: .ok,
             headers: [
                 .allow: "GET, PUT",
-                .link: "service-doc=https://github.com/apple/swift-package-manager/blob/main/Documentation/PackageRegistry/Registry.md,service-desc=https://github.com/apple/swift-package-manager/blob/main/Documentation/PackageRegistry/registry.openapi.yaml",
+                .link: "<https://github.com/apple/swift-package-manager/blob/main/Documentation/PackageRegistry/Registry.md>; rel=\"service-doc\",<https://github.com/apple/swift-package-manager/blob/main/Documentation/PackageRegistry/registry.openapi.yaml>; rel=\"service-desc\"",
             ]
         )
     }
@@ -65,6 +65,7 @@ struct PackageRegistryController<RegistryStorage: Storage, Repository: PackageRe
         let releases = try await repository.list(id: id)
         let sortedReleases = releases.sorted { $0.version < $1.version }
 
+        // Construct Link header
         var headers: HTTPFields = .init()
         if let latestRelease = sortedReleases.last {
             headers[values: .link].append("<https://localhost:8080/repository/\(scope)/\(name)/\(latestRelease.version)>; rel=\"latest-version\"")
@@ -84,7 +85,7 @@ struct PackageRegistryController<RegistryStorage: Storage, Repository: PackageRe
         return .init(headers: headers, response: release)
     }
 
-    @Sendable func getMetadataForSwiftVersion(_: HBRequest, context _: Context) async throws -> HBResponse {
+    @Sendable func getManifest(_: HBRequest, context _: Context) async throws -> HBResponse {
         .init(status: .notFound)
     }
 
@@ -106,8 +107,9 @@ struct PackageRegistryController<RegistryStorage: Storage, Repository: PackageRe
         )
     }
 
-    @Sendable func lookupIdentifiers(_: HBRequest, context _: Context) async throws -> HBResponse {
-        .init(status: .notFound)
+    @Sendable func lookupIdentifiers(request: HBRequest, context: Context) async throws -> HBResponse {
+        _ = try request.uri.queryParameters.require("url")
+        return .init(status: .notFound)
     }
 
     @Sendable func createRelease(_ request: HBRequest, context: Context) async throws -> HBResponse {
@@ -136,7 +138,7 @@ struct PackageRegistryController<RegistryStorage: Storage, Repository: PackageRe
         let body = try await request.body.collect(upTo: .max)
         let createRequest = try FormDataDecoder().decode(CreateReleaseRequest.self, from: body, boundary: parameter.value)
         let id = try PackageIdentifier(scope: scope, name: name)
-        let packageRelease = createRequest.createRelease(id: id, version: version)
+        let packageRelease = try createRequest.createRelease(id: id, version: version)
         // save release metadata
         guard try await self.repository.add(packageRelease) else {
             throw Problem(

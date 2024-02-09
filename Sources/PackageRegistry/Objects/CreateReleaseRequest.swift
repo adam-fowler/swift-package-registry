@@ -7,7 +7,7 @@ import Foundation
 struct CreateReleaseRequest: Codable {
     let sourceArchive: Data
     let sourceArchiveSignature: Data?
-    let metadata: PackageMetadata?
+    let metadata: Data?
     let metadataSignature: Data?
 
     private enum CodingKeys: String, CodingKey {
@@ -17,20 +17,25 @@ struct CreateReleaseRequest: Codable {
         case metadataSignature = "metadata-signature"
     }
 
-    func createRelease(id: PackageIdentifier, version: Version) -> PackageRelease {
+    func createRelease(id: PackageIdentifier, version: Version) throws -> PackageRelease {
         let resource = PackageRelease.Resource(
             name: "source-archive",
             type: "application/zip",
-            checksum: SHA256.hash(data: sourceArchive).hexDigest(),
+            checksum: SHA256.hash(data: self.sourceArchive).hexDigest(),
             signing: nil
         )
-        return .init(
-            id: id, 
-            version: version, 
-            resources: [resource], 
-            metadata: self.metadata, 
-            publishedAt: self.iso8601Formatter.string(from: .now)
-        )
+        do {
+            let metadata = try self.metadata.map { try JSONDecoder().decode(PackageMetadata.self, from: $0) }
+            return .init(
+                id: id,
+                version: version,
+                resources: [resource],
+                metadata: metadata,
+                publishedAt: self.iso8601Formatter.string(from: .now)
+            )
+        } catch {
+            throw Problem(status: .unprocessableContent, detail: "invalid JSON provided for release metadata")
+        }
     }
 
     var iso8601Formatter: ISO8601DateFormatter {
@@ -40,7 +45,7 @@ struct CreateReleaseRequest: Codable {
     }
 }
 
-public extension Sequence where Element == UInt8 {
+public extension Sequence<UInt8> {
     /// return a hexEncoded string buffer from an array of bytes
     func hexDigest() -> String {
         return self.map { String(format: "%02x", $0) }.joined(separator: "")
