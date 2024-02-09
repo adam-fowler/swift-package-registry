@@ -2,7 +2,7 @@ import HTTPTypes
 import Hummingbird
 
 /// Response return by list package releases request
-/// 
+///
 /// refer to: https://github.com/apple/swift-package-manager/blob/main/Documentation/PackageRegistry/Registry.md#41-list-package-releases
 struct ListReleaseResponse: HBResponseEncodable {
     struct Release: Codable {
@@ -17,8 +17,10 @@ struct ListReleaseResponse: HBResponseEncodable {
                 self.detail = detail
             }
         }
+
         let url: String
         let problem: Problem?
     }
-    let releases: [Release]
+
+    let releases: [String: Release]
 }

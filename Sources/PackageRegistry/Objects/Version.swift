@@ -6,11 +6,10 @@
 
  See http://swift.org/LICENSE.txt for license information
  See http://swift.org/CONTRIBUTORS.txt for Swift project authors
-*/
+ */
 
 /// A struct representing a semver version.
 public struct Version: Sendable {
-
     /// The major version.
     public let major: Int
 
@@ -65,26 +64,26 @@ public enum VersionError: Error, CustomStringConvertible {
 
     public var description: String {
         switch self {
-        case let .nonASCIIVersionString(versionString):
+        case .nonASCIIVersionString(let versionString):
             return "non-ASCII characters in version string '\(versionString)'"
-        case let .invalidVersionCoreIdentifiersCount(identifiers, usesLenientParsing):
+        case .invalidVersionCoreIdentifiersCount(let identifiers, let usesLenientParsing):
             return "\(identifiers.count > 3 ? "more than 3" : "fewer than \(usesLenientParsing ? 2 : 3)") identifiers in version core '\(identifiers.joined(separator: "."))'"
-        case let .nonNumericalOrEmptyVersionCoreIdentifiers(identifiers):
-            if !identifiers.allSatisfy( { !$0.isEmpty } ) {
+        case .nonNumericalOrEmptyVersionCoreIdentifiers(let identifiers):
+            if !identifiers.allSatisfy({ !$0.isEmpty }) {
                 return "empty identifiers in version core '\(identifiers.joined(separator: "."))'"
             } else {
                 // Not checking for `.isASCII` here because non-ASCII characters should've already been caught before this.
                 let nonNumericalIdentifiers = identifiers.filter { !$0.allSatisfy(\.isNumber) }
-                return "non-numerical characters in version core identifier\(nonNumericalIdentifiers.count > 1 ? "s" : "") \(nonNumericalIdentifiers.map { "'\($0)'" } .joined(separator: ", "))"
+                return "non-numerical characters in version core identifier\(nonNumericalIdentifiers.count > 1 ? "s" : "") \(nonNumericalIdentifiers.map { "'\($0)'" }.joined(separator: ", "))"
             }
-        case let .nonAlphaNumerHyphenalPrereleaseIdentifiers(identifiers):
+        case .nonAlphaNumerHyphenalPrereleaseIdentifiers(let identifiers):
             // Not checking for `.isASCII` here because non-ASCII characters should've already been caught before this.
             let nonAlphaNumericalIdentifiers = identifiers.filter { !$0.allSatisfy { $0.isLetter || $0.isNumber || $0 == "-" } }
-            return "characters other than alpha-numerics and hyphens in pre-release identifier\(nonAlphaNumericalIdentifiers.count > 1 ? "s" : "") \(nonAlphaNumericalIdentifiers.map { "'\($0)'" } .joined(separator: ", "))"
-        case let .nonAlphaNumerHyphenalBuildMetadataIdentifiers(identifiers):
+            return "characters other than alpha-numerics and hyphens in pre-release identifier\(nonAlphaNumericalIdentifiers.count > 1 ? "s" : "") \(nonAlphaNumericalIdentifiers.map { "'\($0)'" }.joined(separator: ", "))"
+        case .nonAlphaNumerHyphenalBuildMetadataIdentifiers(let identifiers):
             // Not checking for `.isASCII` here because non-ASCII characters should've already been caught before this.
             let nonAlphaNumericalIdentifiers = identifiers.filter { !$0.allSatisfy { $0.isLetter || $0.isNumber || $0 == "-" } }
-            return "characters other than alpha-numerics and hyphens in build metadata identifier\(nonAlphaNumericalIdentifiers.count > 1 ? "s" : "") \(nonAlphaNumericalIdentifiers.map { "'\($0)'" } .joined(separator: ", "))"
+            return "characters other than alpha-numerics and hyphens in build metadata identifier\(nonAlphaNumericalIdentifiers.count > 1 ? "s" : "") \(nonAlphaNumericalIdentifiers.map { "'\($0)'" }.joined(separator: ", "))"
         }
     }
 }
@@ -132,10 +131,10 @@ extension Version {
         self.minor = minor
         self.patch = patch
 
-        if let prereleaseDelimiterIndex = prereleaseDelimiterIndex {
+        if let prereleaseDelimiterIndex {
             let prereleaseStartIndex = versionString.index(after: prereleaseDelimiterIndex)
             let prereleaseIdentifiers = versionString[prereleaseStartIndex..<(metadataDelimiterIndex ?? versionString.endIndex)].split(separator: ".", omittingEmptySubsequences: false)
-            guard prereleaseIdentifiers.allSatisfy( { $0.allSatisfy({ $0.isLetter || $0.isNumber || $0 == "-" }) } ) else {
+            guard prereleaseIdentifiers.allSatisfy({ $0.allSatisfy { $0.isLetter || $0.isNumber || $0 == "-" } }) else {
                 throw VersionError.nonAlphaNumerHyphenalPrereleaseIdentifiers(prereleaseIdentifiers.map { String($0) })
             }
             self.prereleaseIdentifiers = prereleaseIdentifiers.map { String($0) }
@@ -143,10 +142,10 @@ extension Version {
             self.prereleaseIdentifiers = []
         }
 
-        if let metadataDelimiterIndex = metadataDelimiterIndex {
+        if let metadataDelimiterIndex {
             let metadataStartIndex = versionString.index(after: metadataDelimiterIndex)
             let buildMetadataIdentifiers = versionString[metadataStartIndex...].split(separator: ".", omittingEmptySubsequences: false)
-            guard buildMetadataIdentifiers.allSatisfy( { $0.allSatisfy({ $0.isLetter || $0.isNumber || $0 == "-" }) } ) else {
+            guard buildMetadataIdentifiers.allSatisfy({ $0.allSatisfy { $0.isLetter || $0.isNumber || $0 == "-" } }) else {
                 throw VersionError.nonAlphaNumerHyphenalBuildMetadataIdentifiers(buildMetadataIdentifiers.map { String($0) })
             }
             self.buildMetadataIdentifiers = buildMetadataIdentifiers.map { String($0) }
@@ -157,9 +156,8 @@ extension Version {
 }
 
 extension Version: Comparable, Hashable {
-
     func isEqualWithoutPrerelease(_ other: Version) -> Bool {
-        return major == other.major && minor == other.minor && patch == other.patch
+        return self.major == other.major && self.minor == other.minor && self.patch == other.patch
     }
 
     // Although `Comparable` inherits from `Equatable`, it does not provide a new default implementation of `==`, but instead uses `Equatable`'s default synthesised implementation. The compiler-synthesised `==`` is composed of [member-wise comparisons](https://github.com/apple/swift-evolution/blob/main/proposals/0185-synthesize-equatable-hashable.md#implementation-details), which leads to a false `false` when 2 semantic versions differ by only their build metadata identifiers, contradicting SemVer 2.0.0's [comparison rules](https://semver.org/#spec-item-10).
@@ -188,13 +186,14 @@ extension Version: Comparable, Hashable {
             if lhsPrereleaseIdentifier == rhsPrereleaseIdentifier {
                 continue
             }
-            
+
             // Check if either of the 2 pre-release identifiers is numeric.
             let lhsNumericPrereleaseIdentifier = Int(lhsPrereleaseIdentifier)
             let rhsNumericPrereleaseIdentifier = Int(rhsPrereleaseIdentifier)
-            
-            if let lhsNumericPrereleaseIdentifier = lhsNumericPrereleaseIdentifier,
-               let rhsNumericPrereleaseIdentifier = rhsNumericPrereleaseIdentifier {
+
+            if let lhsNumericPrereleaseIdentifier,
+               let rhsNumericPrereleaseIdentifier
+            {
                 return lhsNumericPrereleaseIdentifier < rhsNumericPrereleaseIdentifier
             } else if lhsNumericPrereleaseIdentifier != nil {
                 return true // numeric pre-release < non-numeric pre-release
@@ -211,21 +210,21 @@ extension Version: Comparable, Hashable {
     // Custom `Equatable` conformance leads to custom `Hashable` conformance.
     // [SR-11588](https://bugs.swift.org/browse/SR-11588)
     public func hash(into hasher: inout Hasher) {
-        hasher.combine(major)
-        hasher.combine(minor)
-        hasher.combine(patch)
-        hasher.combine(prereleaseIdentifiers)
+        hasher.combine(self.major)
+        hasher.combine(self.minor)
+        hasher.combine(self.patch)
+        hasher.combine(self.prereleaseIdentifiers)
     }
 }
 
 extension Version: CustomStringConvertible {
     public var description: String {
         var base = "\(major).\(minor).\(patch)"
-        if !prereleaseIdentifiers.isEmpty {
-            base += "-" + prereleaseIdentifiers.joined(separator: ".")
+        if !self.prereleaseIdentifiers.isEmpty {
+            base += "-" + self.prereleaseIdentifiers.joined(separator: ".")
         }
-        if !buildMetadataIdentifiers.isEmpty {
-            base += "+" + buildMetadataIdentifiers.joined(separator: ".")
+        if !self.buildMetadataIdentifiers.isEmpty {
+            base += "+" + self.buildMetadataIdentifiers.joined(separator: ".")
         }
         return base
     }
@@ -250,7 +249,6 @@ extension Version {
 }
 
 extension Version: ExpressibleByStringLiteral {
-
     public init(stringLiteral value: String) {
         guard let version = Version(value) else {
             fatalError("\(value) is not a valid version")
@@ -270,7 +268,7 @@ extension Version: ExpressibleByStringLiteral {
 extension Version: Codable {
     public func encode(to encoder: Encoder) throws {
         var container = encoder.singleValueContainer()
-        try container.encode(description)
+        try container.encode(self.description)
     }
 
     public init(from decoder: Decoder) throws {
@@ -280,18 +278,19 @@ extension Version: Codable {
         guard let version = Version(string) else {
             throw DecodingError.dataCorrupted(.init(
                 codingPath: decoder.codingPath,
-                debugDescription: "Invalid version string \(string)"))
+                debugDescription: "Invalid version string \(string)"
+            ))
         }
 
         self = version
     }
 }
 
-// MARK:- Range operations
+// MARK: - Range operations
 
 extension ClosedRange where Bound == Version {
     /// Marked as unavailable because we have custom rules for contains.
-    public func contains(_ element: Version) -> Bool {
+    public func contains(_: Version) -> Bool {
         // Unfortunately, we can't use unavailable here.
         fatalError("contains(_:) is unavailable, use contains(version:)")
     }
@@ -299,7 +298,7 @@ extension ClosedRange where Bound == Version {
 
 extension Range where Bound == Version {
     /// Marked as unavailable because we have custom rules for contains.
-    public func contains(_ element: Version) -> Bool {
+    public func contains(_: Version) -> Bool {
         // Unfortunately, we can't use unavailable here.
         fatalError("contains(_:) is unavailable, use contains(version:)")
     }
@@ -310,14 +309,14 @@ extension Range where Bound == Version {
         // Special cases if version contains prerelease identifiers.
         if !version.prereleaseIdentifiers.isEmpty {
             // If the range does not contain prerelease identifiers, return false.
-            if lowerBound.prereleaseIdentifiers.isEmpty && upperBound.prereleaseIdentifiers.isEmpty {
+            if lowerBound.prereleaseIdentifiers.isEmpty, upperBound.prereleaseIdentifiers.isEmpty {
                 return false
             }
 
             // At this point, one of the bounds contains prerelease identifiers.
             //
             // Reject 2.0.0-alpha when upper bound is 2.0.0.
-            if upperBound.prereleaseIdentifiers.isEmpty && upperBound.isEqualWithoutPrerelease(version) {
+            if upperBound.prereleaseIdentifiers.isEmpty, upperBound.isEqualWithoutPrerelease(version) {
                 return false
             }
         }

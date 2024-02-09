@@ -38,12 +38,16 @@ struct PackageRegistryController<RegistryStorage: Storage, Repository: PackageRe
         let name = try context.parameters.require("name")
         let id = try PackageIdentifier(scope: scope, name: name)
         let releases = try await repository.list(id: id)
-        let response = ListReleaseResponse(releases: releases.map {
-            return .init(
-                url: "https://localhost:8080/repository/\(scope)/\(name)/\($0.version)",
-                problem: $0.status.problem
+        let releasesResponse = releases.map {
+            return (
+                $0.version.description,
+                ListReleaseResponse.Release(
+                    url: "https://localhost:8080/repository/\(scope)/\(name)/\($0.version)",
+                    problem: $0.status.problem
+                )
             )
-        })
+        }
+        let response = ListReleaseResponse(releases: .init(releasesResponse) { first, _ in first })
         var headers: HTTPFields = .init()
         if let latestRelease = releases.max(by: { $0.version < $1.version }) {
             headers[values: .link].append("<https://localhost:8080/repository/\(scope)/\(name)/\(latestRelease.version)>; rel=\"latest-version\"")
