@@ -11,6 +11,7 @@ enum PackageStatus {
         }
     }
 }
+
 struct ListRelease {
     let id: PackageIdentifier
     let version: Version
@@ -23,6 +24,7 @@ protocol PackageReleaseRepository {
     func get(id: PackageIdentifier, version: Version) async throws -> PackageRelease?
     func list(id: PackageIdentifier) async throws -> [ListRelease]
     func delete(id: PackageIdentifier, version: Version)
+    func query(url: String) async throws -> [PackageIdentifier]
 }
 
 /// Memory implementation of package release repository
@@ -31,12 +33,14 @@ final class MemoryPackageReleaseRepository: PackageReleaseRepository {
         let release: PackageRelease
         var status: PackageStatus
     }
+
     struct PackageReleaseIdentifier {
         let packageId: PackageIdentifier
         let version: Version
 
-        var id: String { packageId.description + version.description } 
+        var id: String { self.packageId.description + self.version.description }
     }
+
     var packages: [String: PackageReleaseStorage]
 
     init() {
@@ -45,21 +49,21 @@ final class MemoryPackageReleaseRepository: PackageReleaseRepository {
 
     func add(_ release: PackageRelease) throws -> Bool {
         let releaseId = PackageReleaseIdentifier(packageId: release.id, version: release.version)
-        if packages[releaseId.id] != nil {
+        if self.packages[releaseId.id] != nil {
             return false
         }
-        packages[releaseId.id] = PackageReleaseStorage(release: release, status: .active)
+        self.packages[releaseId.id] = PackageReleaseStorage(release: release, status: .active)
         return true
     }
 
     func get(id: PackageIdentifier, version: Version) throws -> PackageRelease? {
         let releaseId = PackageReleaseIdentifier(packageId: id, version: version)
-        return packages[releaseId.id]?.release
+        return self.packages[releaseId.id]?.release
     }
 
     func list(id: PackageIdentifier) throws -> [ListRelease] {
         var releases = [ListRelease].init()
-        for release in packages.values {
+        for release in self.packages.values {
             if release.release.id == id {
                 releases.append(.init(id: id, version: release.release.version, status: release.status))
             }
@@ -69,6 +73,16 @@ final class MemoryPackageReleaseRepository: PackageReleaseRepository {
 
     func delete(id: PackageIdentifier, version: Version) {
         let releaseId = PackageReleaseIdentifier(packageId: id, version: version)
-        packages[releaseId.id]?.status = .deleted
+        self.packages[releaseId.id]?.status = .deleted
+    }
+
+    func query(url: String) async throws -> [PackageIdentifier] {
+        var identifierSet = Set<PackageIdentifier>()
+        for package in self.packages.values {
+            if package.release.metadata?.repositoryURLs?.first(where: { $0 == url }) != nil {
+                identifierSet.insert(package.release.id)
+            }
+        }
+        return .init(identifierSet)
     }
 }

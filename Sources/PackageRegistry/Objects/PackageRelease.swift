@@ -24,7 +24,7 @@ struct PackageMetadata: Codable {
     let licenseURL: String?
     let originalPublicationTime: String?
     let readmeURL: String?
-    let repositoryURLs: [String]?
+    var repositoryURLs: [String]?
 }
 
 /// Package release information
@@ -48,4 +48,10 @@ struct PackageRelease: Codable, HBResponseEncodable {
     let resources: [Resource]
     let metadata: PackageMetadata?
     let publishedAt: String?
+}
+
+extension String {
+    func standardizedGitURL() -> String {
+        self.dropSuffix("/").addSuffix(".git").lowercased()
+    }
 }

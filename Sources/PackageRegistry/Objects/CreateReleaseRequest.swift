@@ -25,12 +25,18 @@ struct CreateReleaseRequest: Codable {
             signing: nil
         )
         do {
-            let metadata = try self.metadata.map { try JSONDecoder().decode(PackageMetadata.self, from: $0) }
+            let packageMetadata = try metadata.map {
+                var packageMetadata = try JSONDecoder().decode(PackageMetadata.self, from: $0)
+                if let repositoryURLs = packageMetadata.repositoryURLs {
+                    packageMetadata.repositoryURLs = repositoryURLs.map { $0.standardizedGitURL() }
+                }
+                return packageMetadata
+            }
             return .init(
                 id: id,
                 version: version,
                 resources: [resource],
-                metadata: metadata,
+                metadata: packageMetadata,
                 publishedAt: self.iso8601Formatter.string(from: .now)
             )
         } catch {

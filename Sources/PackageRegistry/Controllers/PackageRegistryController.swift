@@ -107,9 +107,18 @@ struct PackageRegistryController<RegistryStorage: Storage, Repository: PackageRe
         )
     }
 
-    @Sendable func lookupIdentifiers(request: HBRequest, context: Context) async throws -> HBResponse {
-        _ = try request.uri.queryParameters.require("url")
-        return .init(status: .notFound)
+    struct Identifiers: HBResponseEncodable {
+        let identifiers: [PackageIdentifier]
+    }
+
+    @Sendable func lookupIdentifiers(request: HBRequest, context: Context) async throws -> Identifiers {
+        var url = try request.uri.queryParameters.require("url")
+        url = url.standardizedGitURL()
+        let identifiers = try await self.repository.query(url: url)
+        guard identifiers.count > 0 else {
+            throw HBHTTPError(.notFound)
+        }
+        return .init(identifiers: identifiers)
     }
 
     @Sendable func createRelease(_ request: HBRequest, context: Context) async throws -> HBResponse {
