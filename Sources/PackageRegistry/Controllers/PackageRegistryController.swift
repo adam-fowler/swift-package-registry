@@ -7,6 +7,7 @@ import Zip
 
 extension HTTPField.Name {
     static var link: Self { .init("Link")! }
+    static var digest: Self { .init("Digest")! }
 }
 
 struct PackageRegistryController<PackageReleases: PackageReleaseRepository, Manifests: ManifestRepository> {
@@ -135,15 +136,25 @@ struct PackageRegistryController<PackageReleases: PackageReleaseRepository, Mani
         let name = try context.parameters.require("name")
         let version = try context.parameters.require("version", as: Version.self)
         let filename = "\(scope).\(name)/\(version).zip"
+
+        // get metadata
+        let id = try PackageIdentifier(scope: scope, name: name)
+        guard let release = try await try await packageRepository.get(id: id, version: version) else {
+            throw HBHTTPError(.notFound)
+        }
+        let digest = release.resources.first { $0.name == "source-archive" }?.checksum
         let responseBody = try await self.storage.readFile(filename, context: context)
+        var headers: HTTPFields = [
+            .contentType: HBMediaType.applicationZip.description,
+            .contentDisposition: "attachment; filename=\"\(name)-\(version).zip\"",
+            .cacheControl: "public, immutable",
+        ]
+        if let digest {
+            headers[.digest] = "sha256=\(digest)"
+        }
         return .init(
             status: .ok,
-            headers: [
-                .contentType: HBMediaType.applicationZip.description,
-                .contentDisposition: "attachment; filename=\"\(name)-\(version).zip\"",
-                .cacheControl: "public, immutable",
-                // .digest
-            ],
+            headers: headers,
             body: responseBody
         )
     }
