@@ -36,6 +36,7 @@ struct PackageRegistryController<PackageReleases: PackageReleaseRepository, Mani
         )
     }
 
+    /// List package releases
     @Sendable func list(_: HBRequest, context: Context) async throws -> HBEditedResponse<ListReleaseResponse> {
         let scope = try context.parameters.require("scope")
         let name = try context.parameters.require("name")
@@ -66,6 +67,7 @@ struct PackageRegistryController<PackageReleases: PackageReleaseRepository, Mani
         )
     }
 
+    /// Fetch metadata for a package release
     @Sendable func getMetadata(_: HBRequest, context: Context) async throws -> HBEditedResponse<PackageRelease> {
         let scope = try context.parameters.require("scope")
         let name = try context.parameters.require("name")
@@ -97,6 +99,7 @@ struct PackageRegistryController<PackageReleases: PackageReleaseRepository, Mani
         return .init(headers: headers, response: release)
     }
 
+    /// Fetch manifest for a package release
     @Sendable func getManifest(_ request: HBRequest, context: Context) async throws -> HBResponse {
         let scope = try context.parameters.require("scope")
         let name = try context.parameters.require("name")
@@ -126,6 +129,7 @@ struct PackageRegistryController<PackageReleases: PackageReleaseRepository, Mani
         return .init(status: .ok, headers: headers, body: .init(byteBuffer: manifest.manifest))
     }
 
+    /// Download source archive for a package release
     @Sendable func download(_: HBRequest, context: Context) async throws -> HBResponse {
         let scope = try context.parameters.require("scope")
         let name = try context.parameters.require("name")
@@ -148,6 +152,7 @@ struct PackageRegistryController<PackageReleases: PackageReleaseRepository, Mani
         let identifiers: [PackageIdentifier]
     }
 
+    /// Lookup package identifiers registered for a URL
     @Sendable func lookupIdentifiers(request: HBRequest, context: Context) async throws -> Identifiers {
         var url = try request.uri.queryParameters.require("url")
         url = url.standardizedGitURL()
@@ -158,6 +163,7 @@ struct PackageRegistryController<PackageReleases: PackageReleaseRepository, Mani
         return .init(identifiers: identifiers)
     }
 
+    /// Create a package release
     @Sendable func createRelease(_ request: HBRequest, context: Context) async throws -> HBResponse {
         if request.headers[.expect] == "100 (Continue)" {
             throw Problem(
@@ -191,7 +197,7 @@ struct PackageRegistryController<PackageReleases: PackageReleaseRepository, Mani
         try await storage.makeDirectory(folder, context: context)
         try await self.storage.writeFile(filename, buffer: ByteBuffer(data: createRequest.sourceArchive), context: context)
         // process zip file and extract package.swift
-        let manifests = try await self.processZipFile(self.storage.rootFolder + filename)
+        let manifests = try await self.extractManifestsFromZipFile(self.storage.rootFolder + filename)
         guard manifests.count > 0 else {
             throw Problem(
                 status: .unprocessableContent,
@@ -210,7 +216,8 @@ struct PackageRegistryController<PackageReleases: PackageReleaseRepository, Mani
         return .init(status: .created)
     }
 
-    func processZipFile(_ filename: String) async throws -> [ManifestVersion] {
+    /// Extract manifests from zip file
+    func extractManifestsFromZipFile(_ filename: String) async throws -> [ManifestVersion] {
         do {
             let zipFileManager = ZipFileManager()
             return try await zipFileManager.withZipFile(filename) { zip in
@@ -230,6 +237,8 @@ struct PackageRegistryController<PackageReleases: PackageReleaseRepository, Mani
                     let version: String?
                     if file.filename == "/package.swift" {
                         version = nil
+                    } else if let v = file.filename.wholeMatch(of: packageSwiftRegex)?.output.1 {
+                        version = v
                     } else {
                         continue
                     }
@@ -245,7 +254,7 @@ struct PackageRegistryController<PackageReleases: PackageReleaseRepository, Mani
 }
 
 private let packageSwiftRegex = Regex {
-    "package"
+    "/package"
     Optionally {
         "@swift-"
         Capture {
