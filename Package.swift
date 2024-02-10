@@ -11,6 +11,7 @@ let package = Package(
     dependencies: [
         .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.3.0"),
         .package(url: "https://github.com/apple/swift-crypto.git", from: "3.0.0"),
+        .package(url: "https://github.com/apple/swift-nio.git", from: "2.63.0"),
         .package(url: "https://github.com/hummingbird-project/hummingbird.git", branch: "2.x.x"),
         .package(url: "https://github.com/vapor/multipart-kit.git", from: "4.0.0"),
     ],
@@ -23,9 +24,15 @@ let package = Package(
                 .product(name: "Hummingbird", package: "hummingbird"),
                 .product(name: "HummingbirdTLS", package: "hummingbird"),
                 .product(name: "MultipartKit", package: "multipart-kit"),
+                .byName(name: "Zip"),
             ],
             swiftSettings: swiftSettings
         ),
+        .target(name: "CMinizip"),
+        .target(name: "Zip", dependencies: [
+            "CMinizip",
+            .product(name: "NIOPosix", package: "swift-nio"),
+        ]),
         .testTarget(
             name: "PackageRegistryTests",
             dependencies: [

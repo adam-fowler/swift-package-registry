@@ -1,6 +1,7 @@
 enum PackageStatus {
     case active
     case deleted
+    case processing
 
     var problem: ListReleaseResponse.Release.Problem? {
         switch self {
@@ -8,6 +9,17 @@ enum PackageStatus {
             ListReleaseResponse.Release.Problem(status: .gone, detail: "this release was removed from the registry")
         case .active:
             nil
+        case .processing:
+            nil
+        }
+    }
+
+    var shoudBeListed: Bool {
+        switch self {
+        case .active, .deleted:
+            true
+        case .processing:
+            false
         }
     }
 }
@@ -23,8 +35,15 @@ protocol PackageReleaseRepository {
     func add(_ release: PackageRelease) async throws -> Bool
     func get(id: PackageIdentifier, version: Version) async throws -> PackageRelease?
     func list(id: PackageIdentifier) async throws -> [ListRelease]
-    func delete(id: PackageIdentifier, version: Version)
+    func setStatus(id: PackageIdentifier, version: Version, status: PackageStatus)
     func query(url: String) async throws -> [PackageIdentifier]
+}
+
+struct PackageReleaseIdentifier: Hashable, Equatable {
+    let packageId: PackageIdentifier
+    let version: Version
+
+    var id: String { self.packageId.description + self.version.description }
 }
 
 /// Memory implementation of package release repository
@@ -32,13 +51,6 @@ final class MemoryPackageReleaseRepository: PackageReleaseRepository {
     struct PackageReleaseStorage {
         let release: PackageRelease
         var status: PackageStatus
-    }
-
-    struct PackageReleaseIdentifier {
-        let packageId: PackageIdentifier
-        let version: Version
-
-        var id: String { self.packageId.description + self.version.description }
     }
 
     var packages: [String: PackageReleaseStorage]
@@ -71,9 +83,9 @@ final class MemoryPackageReleaseRepository: PackageReleaseRepository {
         return releases
     }
 
-    func delete(id: PackageIdentifier, version: Version) {
+    func setStatus(id: PackageIdentifier, version: Version, status: PackageStatus) {
         let releaseId = PackageReleaseIdentifier(packageId: id, version: version)
-        self.packages[releaseId.id]?.status = .deleted
+        self.packages[releaseId.id]?.status = status
     }
 
     func query(url: String) async throws -> [PackageIdentifier] {
