@@ -238,7 +238,7 @@ struct PackageRegistryController<PackageReleases: PackageReleaseRepository, Mani
                     if file.filename == "/package.swift" {
                         version = nil
                     } else if let v = file.filename.wholeMatch(of: packageSwiftRegex)?.output.1 {
-                        version = v
+                        version = String(v)
                     } else {
                         continue
                     }
