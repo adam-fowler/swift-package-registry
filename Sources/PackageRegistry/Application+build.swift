@@ -2,6 +2,7 @@ import Hummingbird
 import HummingbirdTLS
 import Logging
 import NIOSSL
+@_spi(ConnectionPool) import PostgresNIO
 
 /// Application arguments protocol. We use a protocol so we can call
 /// `HBApplication.configure` inside Tests as well as in the App executable.
@@ -10,16 +11,34 @@ import NIOSSL
 public protocol AppArguments {
     var hostname: String { get }
     var port: Int { get }
+    var inMemory: Bool { get }
 }
 
-public func buildApplication(_ arguments: some AppArguments) async throws -> some HBApplicationProtocol {
-    var logger = Logger(label: "PackageRegistry")
-    logger.logLevel = .debug
+public func buildApplication(_ args: some AppArguments) async throws -> some HBApplicationProtocol {
+    let logger = {
+        var logger = Logger(label: "PackageRegistry")
+        logger.logLevel = .debug
+        return logger
+    }()
     let router = HBRouter(context: RequestContext.self, options: .autoGenerateHeadEndpoints)
     router.middlewares.add(HBLogRequestsMiddleware(.debug))
     router.middlewares.add(VersionMiddleware(version: "1"))
     router.get("/health") { _, _ -> HTTPResponse.Status in
         .ok
+    }
+
+    var postgresClient: PostgresClient?
+    let postgresMigrations: Migrations<PostgresMigrationRepository>?
+    if !args.inMemory {
+        let client = PostgresClient(
+            configuration: .init(host: "localhost", username: "spruser", password: "user", database: "swiftpackageregistry", tls: .disable),
+            backgroundLogger: logger
+        )
+        let migrations = Migrations(repository: PostgresMigrationRepository(client: client))
+        postgresClient = client
+        postgresMigrations = migrations
+    } else {
+        postgresMigrations = nil
     }
 
     let storage = FileStorage(rootFolder: "registry")
@@ -30,15 +49,27 @@ public func buildApplication(_ arguments: some AppArguments) async throws -> som
         manifestRepository: MemoryManifestRepository()
     ).addRoutes(to: router.group("registry"))
 
-    let app = try HBApplication(
+    var app = try HBApplication(
         router: router,
         server: .tls(tlsConfiguration: tlsConfiguration),
         configuration: .init(
-            address: .hostname(arguments.hostname, port: arguments.port),
+            address: .hostname(args.hostname, port: args.port),
             serverName: "localhost:8080"
         ),
         logger: logger
     )
+
+    if let postgresClient {
+        app.addServices(PostgresClientService(client: postgresClient))
+        app.runBeforeServerStart {
+            do {
+                try await postgresMigrations?.migrate(logger: logger, dryRun: false)
+            } catch {
+                print(String(reflecting: error))
+                throw error
+            }
+        }
+    }
     return app
 }
 

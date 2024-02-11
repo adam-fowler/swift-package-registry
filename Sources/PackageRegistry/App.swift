@@ -9,6 +9,9 @@ struct App: AsyncParsableCommand, AppArguments {
     @Option(name: .shortAndLong)
     var port: Int = 8081
 
+    @Flag(name: .shortAndLong)
+    var inMemory: Bool = false
+
     func run() async throws {
         let app = try await buildApplication(self)
         try await app.runService()

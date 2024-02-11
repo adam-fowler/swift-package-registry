@@ -139,7 +139,7 @@ struct PackageRegistryController<PackageReleases: PackageReleaseRepository, Mani
 
         // get metadata
         let id = try PackageIdentifier(scope: scope, name: name)
-        guard let release = try await try await packageRepository.get(id: id, version: version) else {
+        guard let release = try await packageRepository.get(id: id, version: version) else {
             throw HBHTTPError(.notFound)
         }
         let digest = release.resources.first { $0.name == "source-archive" }?.checksum

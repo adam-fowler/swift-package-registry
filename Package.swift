@@ -14,6 +14,7 @@ let package = Package(
         .package(url: "https://github.com/apple/swift-nio.git", from: "2.63.0"),
         .package(url: "https://github.com/hummingbird-project/hummingbird.git", branch: "2.x.x"),
         .package(url: "https://github.com/vapor/multipart-kit.git", from: "4.0.0"),
+        .package(url: "https://github.com/vapor/postgres-nio.git", from: "1.20.0"),
     ],
     targets: [
         .executableTarget(
@@ -24,6 +25,7 @@ let package = Package(
                 .product(name: "Hummingbird", package: "hummingbird"),
                 .product(name: "HummingbirdTLS", package: "hummingbird"),
                 .product(name: "MultipartKit", package: "multipart-kit"),
+                .product(name: "PostgresNIO", package: "postgres-nio"),
                 .byName(name: "Zip"),
             ],
             swiftSettings: swiftSettings
