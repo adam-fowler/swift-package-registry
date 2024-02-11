@@ -21,11 +21,13 @@ public func buildApplication(_ args: some AppArguments) async throws -> some HBA
         return logger
     }()
     let router = HBRouter(context: RequestContext.self, options: .autoGenerateHeadEndpoints)
+    router.middlewares.add(ProblemMiddleware())
     router.middlewares.add(HBLogRequestsMiddleware(.debug))
     router.middlewares.add(VersionMiddleware(version: "1"))
     router.get("/health") { _, _ -> HTTPResponse.Status in
         .ok
     }
+    let storage = FileStorage(rootFolder: "registry")
 
     var postgresClient: PostgresClient?
     let postgresMigrations: Migrations<PostgresMigrationRepository>?
@@ -35,19 +37,26 @@ public func buildApplication(_ args: some AppArguments) async throws -> some HBA
             backgroundLogger: logger
         )
         let migrations = Migrations(repository: PostgresMigrationRepository(client: client))
+        await migrations.add(CreatePackageRelease())
+
+        // Add package registry endpoints
+        PackageRegistryController(
+            storage: storage,
+            packageRepository: PostgresPackageReleaseRepository(client: client),
+            manifestRepository: MemoryManifestRepository()
+        ).addRoutes(to: router.group("registry"))
+
         postgresClient = client
         postgresMigrations = migrations
     } else {
+        // Add package registry endpoints
+        PackageRegistryController(
+            storage: storage,
+            packageRepository: MemoryPackageReleaseRepository(),
+            manifestRepository: MemoryManifestRepository()
+        ).addRoutes(to: router.group("registry"))
         postgresMigrations = nil
     }
-
-    let storage = FileStorage(rootFolder: "registry")
-    // Add package registry endpoints
-    PackageRegistryController(
-        storage: storage,
-        packageRepository: MemoryPackageReleaseRepository(),
-        manifestRepository: MemoryManifestRepository()
-    ).addRoutes(to: router.group("registry"))
 
     var app = try HBApplication(
         router: router,

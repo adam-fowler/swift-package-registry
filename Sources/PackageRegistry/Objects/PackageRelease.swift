@@ -27,6 +27,13 @@ struct PackageMetadata: Codable {
     var repositoryURLs: [String]?
 }
 
+struct PackageReleaseIdentifier: Hashable, Equatable {
+    let packageId: PackageIdentifier
+    let version: Version
+
+    var id: String { self.packageId.description + self.version.description }
+}
+
 /// Package release information
 ///
 /// Refer to: https://github.com/apple/swift-package-manager/blob/main/Documentation/PackageRegistry/Registry.md#42-fetch-information-about-a-package-release
@@ -48,6 +55,8 @@ struct PackageRelease: Codable, HBResponseEncodable {
     let resources: [Resource]
     let metadata: PackageMetadata?
     let publishedAt: String?
+
+    var releaseID: PackageReleaseIdentifier { .init(packageId: self.id, version: self.version) }
 }
 
 extension String {

@@ -2,10 +2,7 @@ import Logging
 @_spi(ConnectionPool) import PostgresNIO
 
 struct PostgresMigrationRepository: MigrationRepository {
-    struct Context {
-        let connection: PostgresConnection
-        let logger: Logger
-    }
+    typealias Context = PostgresContext
 
     let client: PostgresClient
 

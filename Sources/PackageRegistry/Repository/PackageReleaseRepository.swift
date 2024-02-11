@@ -1,5 +1,7 @@
-enum PackageStatus {
-    case active
+@_spi(ConnectionPool) import PostgresNIO
+
+enum PackageStatus: String, Codable {
+    case ok
     case deleted
     case processing
 
@@ -7,7 +9,7 @@ enum PackageStatus {
         switch self {
         case .deleted:
             ListReleaseResponse.Release.Problem(status: .gone, detail: "this release was removed from the registry")
-        case .active:
+        case .ok:
             nil
         case .processing:
             nil
@@ -16,7 +18,7 @@ enum PackageStatus {
 
     var shoudBeListed: Bool {
         switch self {
-        case .active, .deleted:
+        case .ok, .deleted:
             true
         case .processing:
             false
@@ -32,16 +34,13 @@ struct ListRelease {
 
 /// Package release repository
 protocol PackageReleaseRepository {
-    func add(_ release: PackageRelease) async throws -> Bool
-    func get(id: PackageIdentifier, version: Version) async throws -> PackageRelease?
-    func list(id: PackageIdentifier) async throws -> [ListRelease]
-    func setStatus(id: PackageIdentifier, version: Version, status: PackageStatus)
-    func query(url: String) async throws -> [PackageIdentifier]
-}
+    associatedtype Context
 
-struct PackageReleaseIdentifier: Hashable, Equatable {
-    let packageId: PackageIdentifier
-    let version: Version
+    func withContext<Value>(logger: Logger, _ process: (Context) async throws -> Value) async throws -> Value
 
-    var id: String { self.packageId.description + self.version.description }
+    func add(_ release: PackageRelease, context: Context) async throws -> Bool
+    func get(id: PackageIdentifier, version: Version, context: Context) async throws -> PackageRelease?
+    func list(id: PackageIdentifier, context: Context) async throws -> [ListRelease]
+    func setStatus(id: PackageIdentifier, version: Version, status: PackageStatus, context: Context)
+    func query(url: String, context: Context) async throws -> [PackageIdentifier]
 }

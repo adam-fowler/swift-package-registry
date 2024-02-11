@@ -1,3 +1,5 @@
+import Logging
+
 /// Memory implementation of package release repository
 final class MemoryPackageReleaseRepository: PackageReleaseRepository {
     struct PackageReleaseStorage {
@@ -5,27 +7,33 @@ final class MemoryPackageReleaseRepository: PackageReleaseRepository {
         var status: PackageStatus
     }
 
+    typealias Context = Void
+
     var packages: [String: PackageReleaseStorage]
 
     init() {
         self.packages = .init()
     }
 
-    func add(_ release: PackageRelease) throws -> Bool {
-        let releaseId = PackageReleaseIdentifier(packageId: release.id, version: release.version)
-        if self.packages[releaseId.id] != nil {
+    func withContext<Value>(logger: Logger, _ process: (Context) async throws -> Value) async throws -> Value {
+        try await process(())
+    }
+
+    func add(_ release: PackageRelease, context: Context) throws -> Bool {
+        let releaseID = release.releaseID
+        if self.packages[releaseID.id] != nil {
             return false
         }
-        self.packages[releaseId.id] = PackageReleaseStorage(release: release, status: .active)
+        self.packages[releaseID.id] = PackageReleaseStorage(release: release, status: .ok)
         return true
     }
 
-    func get(id: PackageIdentifier, version: Version) throws -> PackageRelease? {
+    func get(id: PackageIdentifier, version: Version, context: Context) throws -> PackageRelease? {
         let releaseId = PackageReleaseIdentifier(packageId: id, version: version)
         return self.packages[releaseId.id]?.release
     }
 
-    func list(id: PackageIdentifier) throws -> [ListRelease] {
+    func list(id: PackageIdentifier, context: Context) throws -> [ListRelease] {
         var releases = [ListRelease].init()
         for release in self.packages.values {
             if release.release.id == id {
@@ -35,12 +43,12 @@ final class MemoryPackageReleaseRepository: PackageReleaseRepository {
         return releases
     }
 
-    func setStatus(id: PackageIdentifier, version: Version, status: PackageStatus) {
+    func setStatus(id: PackageIdentifier, version: Version, status: PackageStatus, context: Context) {
         let releaseId = PackageReleaseIdentifier(packageId: id, version: version)
         self.packages[releaseId.id]?.status = status
     }
 
-    func query(url: String) async throws -> [PackageIdentifier] {
+    func query(url: String, context: Context) async throws -> [PackageIdentifier] {
         var identifierSet = Set<PackageIdentifier>()
         for package in self.packages.values {
             if package.release.metadata?.repositoryURLs?.first(where: { $0 == url }) != nil {

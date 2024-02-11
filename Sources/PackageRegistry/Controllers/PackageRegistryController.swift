@@ -42,7 +42,9 @@ struct PackageRegistryController<PackageReleases: PackageReleaseRepository, Mani
         let scope = try context.parameters.require("scope")
         let name = try context.parameters.require("name")
         let id = try PackageIdentifier(scope: scope, name: name)
-        let releases = try await packageRepository.list(id: id)
+        let releases = try await self.packageRepository.withContext(logger: context.logger) { context in
+            return try await self.packageRepository.list(id: id, context: context)
+        }
         guard releases.count > 0 else { throw HBHTTPError(.notFound) }
         let releasesResponse = releases.compactMap {
             if $0.status.shoudBeListed {
@@ -74,11 +76,14 @@ struct PackageRegistryController<PackageReleases: PackageReleaseRepository, Mani
         let name = try context.parameters.require("name")
         let version = try context.parameters.require("version", as: Version.self)
         let id = try PackageIdentifier(scope: scope, name: name)
-        guard let release = try await packageRepository.get(id: id, version: version) else {
-            throw HBHTTPError(.notFound)
+        let (release, sortedReleases) = try await packageRepository.withContext(logger: context.logger) { context in
+            guard let release = try await packageRepository.get(id: id, version: version, context: context) else {
+                throw HBHTTPError(.notFound)
+            }
+            let releases = try await packageRepository.list(id: id, context: context)
+            let sortedReleases = releases.sorted { $0.version < $1.version }
+            return (release, sortedReleases)
         }
-        let releases = try await packageRepository.list(id: id)
-        let sortedReleases = releases.sorted { $0.version < $1.version }
 
         // Construct Link header
         var headers: HTTPFields = .init()
@@ -139,7 +144,10 @@ struct PackageRegistryController<PackageReleases: PackageReleaseRepository, Mani
 
         // get metadata
         let id = try PackageIdentifier(scope: scope, name: name)
-        guard let release = try await packageRepository.get(id: id, version: version) else {
+        let release = try await packageRepository.withContext(logger: context.logger) { context in
+            try await self.packageRepository.get(id: id, version: version, context: context)
+        }
+        guard let release else {
             throw HBHTTPError(.notFound)
         }
         let digest = release.resources.first { $0.name == "source-archive" }?.checksum
@@ -167,7 +175,9 @@ struct PackageRegistryController<PackageReleases: PackageReleaseRepository, Mani
     @Sendable func lookupIdentifiers(request: HBRequest, context: Context) async throws -> Identifiers {
         var url = try request.uri.queryParameters.require("url")
         url = url.standardizedGitURL()
-        let identifiers = try await self.packageRepository.query(url: url)
+        let identifiers = try await packageRepository.withContext(logger: context.logger) { context in
+            try await self.packageRepository.query(url: url, context: context)
+        }
         guard identifiers.count > 0 else {
             throw HBHTTPError(.notFound)
         }
@@ -217,12 +227,14 @@ struct PackageRegistryController<PackageReleases: PackageReleaseRepository, Mani
         }
         try await self.manifestRepository.add(.init(packageId: id, version: version), manifests: manifests)
         // save release metadata
-        guard try await self.packageRepository.add(packageRelease) else {
-            throw Problem(
-                status: .conflict,
-                type: ProblemType.versionAlreadyExists.url,
-                detail: "a release with version \(version) already exists"
-            )
+        try await self.packageRepository.withContext(logger: context.logger) { context in
+            guard try await self.packageRepository.add(packageRelease, context: context) else {
+                throw Problem(
+                    status: .conflict,
+                    type: ProblemType.versionAlreadyExists.url,
+                    detail: "a release with version \(version) already exists"
+                )
+            }
         }
         return .init(status: .created)
     }
