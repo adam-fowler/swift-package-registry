@@ -41,6 +41,6 @@ protocol PackageReleaseRepository {
     func add(_ release: PackageRelease, context: Context) async throws -> Bool
     func get(id: PackageIdentifier, version: Version, context: Context) async throws -> PackageRelease?
     func list(id: PackageIdentifier, context: Context) async throws -> [ListRelease]
-    func setStatus(id: PackageIdentifier, version: Version, status: PackageStatus, context: Context)
+    func setStatus(id: PackageIdentifier, version: Version, status: PackageStatus, context: Context) async throws
     func query(url: String, context: Context) async throws -> [PackageIdentifier]
 }

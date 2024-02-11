@@ -72,6 +72,7 @@ public func buildApplication(_ args: some AppArguments) async throws -> some HBA
         app.addServices(PostgresClientService(client: postgresClient))
         app.runBeforeServerStart {
             do {
+                try await PackageStatus.setDataType(client: postgresClient, logger: logger)
                 try await postgresMigrations?.migrate(logger: logger, dryRun: false)
             } catch {
                 print(String(reflecting: error))

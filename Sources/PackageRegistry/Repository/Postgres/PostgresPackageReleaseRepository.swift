@@ -3,7 +3,12 @@ import Foundation
 
 struct PostgresPackageReleaseRepository: PackageReleaseRepository {
     typealias Context = PostgresContext
+    struct Error: Swift.Error {
+        let message: String
+    }
+
     let client: PostgresClient
+    static var statusDataType: PostgresDataType!
 
     func withContext<Value>(logger: Logger, _ process: (Context) async throws -> Value) async throws -> Value {
         try await self.client.withConnection { connection in
@@ -36,13 +41,18 @@ struct PostgresPackageReleaseRepository: PackageReleaseRepository {
         )
         var releases: [ListRelease] = []
         for try await (release, status) in stream.decode((PackageRelease, PackageStatus).self, context: .default) {
-            // guard let status = PackageStatus(rawValue: status) else { continue }
             releases.append(.init(id: id, version: release.version, status: status))
         }
         return releases
     }
 
-    func setStatus(id: PackageIdentifier, version: Version, status: PackageStatus, context: Context) {}
+    func setStatus(id: PackageIdentifier, version: Version, status: PackageStatus, context: Context) async throws {
+        let releaseId = PackageReleaseIdentifier(packageId: id, version: version)
+        _ = try await context.connection.query(
+            "UPDATE PackageRelease SET status = \(status) WHERE id = \(releaseId.id)",
+            logger: context.logger
+        )
+    }
 
     func query(url: String, context: Context) async throws -> [PackageIdentifier] {
         return []
@@ -57,7 +67,32 @@ extension PackageRelease: PostgresEncodable, PostgresDecodable {
     static var psqlFormat: PostgresFormat { .binary }
 }
 
-extension PackageStatus: PostgresDecodable {
+extension PackageStatus: PostgresDecodable, PostgresEncodable {
+    static var psqlType: PostgresDataType = .null
+    static var psqlFormat: PostgresFormat { .text }
+
+    static func setDataType(client: PostgresClient, logger: Logger) async throws {
+        guard let statusDataType: PostgresDataType = try await client.withConnection({ connection -> PostgresDataType? in
+            let stream = try await connection.query(
+                "SELECT oid FROM pg_type WHERE typname = 'status';",
+                logger: logger
+            )
+            return try await stream.decode(UInt32.self, context: .default)
+                .first { _ in true }
+                .map { oid in PostgresDataType(numericCast(oid)) }
+        }) else {
+            throw PostgresError(message: "Failed to get status type")
+        }
+        Self.psqlType = statusDataType
+    }
+
+    func encode(
+        into byteBuffer: inout ByteBuffer,
+        context: PostgresEncodingContext<some PostgresNIO.PostgresJSONEncoder>
+    ) throws {
+        byteBuffer.writeString(self.rawValue)
+    }
+
     init(
         from byteBuffer: inout ByteBuffer,
         type: PostgresDataType,
@@ -69,5 +104,25 @@ extension PackageStatus: PostgresDecodable {
             throw DecodingError.typeMismatch(Self.self, .init(codingPath: [], debugDescription: "Unexpected value: \(string)"))
         }
         self = value
+    }
+}
+
+extension UInt32: PostgresDecodable {
+    @inlinable
+    public init(
+        from buffer: inout ByteBuffer,
+        type: PostgresDataType,
+        format: PostgresFormat,
+        context: PostgresDecodingContext<some PostgresJSONDecoder>
+    ) throws {
+        switch (format, type) {
+        case (.binary, .oid):
+            guard buffer.readableBytes == 4, let value = buffer.readInteger(as: UInt32.self) else {
+                throw PostgresDecodingError.Code.failure
+            }
+            self = UInt32(value)
+        default:
+            throw PostgresDecodingError.Code.typeMismatch
+        }
     }
 }
