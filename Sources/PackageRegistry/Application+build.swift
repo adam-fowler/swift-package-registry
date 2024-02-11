@@ -12,6 +12,7 @@ public protocol AppArguments {
     var hostname: String { get }
     var port: Int { get }
     var inMemory: Bool { get }
+    var revert: Bool { get }
 }
 
 public func buildApplication(_ args: some AppArguments) async throws -> some HBApplicationProtocol {
@@ -38,6 +39,7 @@ public func buildApplication(_ args: some AppArguments) async throws -> some HBA
         )
         let migrations = Migrations(repository: PostgresMigrationRepository(client: client))
         await migrations.add(CreatePackageRelease())
+        await migrations.add(CreateURLPackageReference())
 
         // Add package registry endpoints
         PackageRegistryController(
@@ -72,8 +74,11 @@ public func buildApplication(_ args: some AppArguments) async throws -> some HBA
         app.addServices(PostgresClientService(client: postgresClient))
         app.runBeforeServerStart {
             do {
-                try await PackageStatus.setDataType(client: postgresClient, logger: logger)
+                if args.revert {
+                    try await postgresMigrations?.revert(logger: logger, dryRun: false)
+                }
                 try await postgresMigrations?.migrate(logger: logger, dryRun: false)
+                try await PackageStatus.setDataType(client: postgresClient, logger: logger)
             } catch {
                 print(String(reflecting: error))
                 throw error

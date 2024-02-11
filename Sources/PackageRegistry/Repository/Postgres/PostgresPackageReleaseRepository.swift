@@ -22,6 +22,14 @@ struct PostgresPackageReleaseRepository: PackageReleaseRepository {
             "INSERT INTO PackageRelease VALUES (\(releaseID), \(package), \(package.id.id), 'ok')",
             logger: context.logger
         )
+        if let repositoryURLs = package.metadata?.repositoryURLs {
+            for url in repositoryURLs {
+                _ = try await context.connection.query(
+                    "INSERT INTO urls VALUES (\(url), \(package.id.id))",
+                    logger: context.logger
+                )
+            }
+        }
         return true
     }
 
@@ -55,7 +63,15 @@ struct PostgresPackageReleaseRepository: PackageReleaseRepository {
     }
 
     func query(url: String, context: Context) async throws -> [PackageIdentifier] {
-        return []
+        let stream = try await context.connection.query(
+            "SELECT package_id FROM urls WHERE url = \(url)",
+            logger: context.logger
+        )
+        var packages: [PackageIdentifier] = []
+        for try await (packageId) in stream.decode(String.self, context: .default) {
+            try packages.append(.init(packageId))
+        }
+        return packages
     }
 }
 

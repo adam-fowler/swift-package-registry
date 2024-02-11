@@ -12,6 +12,9 @@ struct App: AsyncParsableCommand, AppArguments {
     @Flag(name: .shortAndLong)
     var inMemory: Bool = false
 
+    @Flag(name: .shortAndLong)
+    var revert: Bool = false
+
     func run() async throws {
         let app = try await buildApplication(self)
         try await app.runService()
