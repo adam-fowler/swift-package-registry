@@ -1,6 +1,6 @@
 @_spi(ConnectionPool) import PostgresNIO
 
-extension PackageRelease: PostgresEncodable, PostgresDecodable {
+extension PackageRelease: PostgresCodable {
     /// The data type encoded into the `byteBuffer` in ``encode(into:context:)``.
     static var psqlType: PostgresDataType { .jsonb }
 
@@ -8,7 +8,7 @@ extension PackageRelease: PostgresEncodable, PostgresDecodable {
     static var psqlFormat: PostgresFormat { .binary }
 }
 
-extension PackageIdentifier: PostgresDecodable, PostgresEncodable {
+extension PackageIdentifier: PostgresCodable {
     static var psqlType: PostgresDataType = .text
     static var psqlFormat: PostgresFormat { .text }
 
@@ -16,7 +16,7 @@ extension PackageIdentifier: PostgresDecodable, PostgresEncodable {
         into byteBuffer: inout ByteBuffer,
         context: PostgresEncodingContext<some PostgresNIO.PostgresJSONEncoder>
     ) throws {
-        byteBuffer.writeString(self.id)
+        id.encode(into: &byteBuffer, context: context)
     }
 
     init(
@@ -25,16 +25,16 @@ extension PackageIdentifier: PostgresDecodable, PostgresEncodable {
         format: PostgresFormat,
         context: PostgresDecodingContext<some PostgresJSONDecoder>
     ) throws {
-        let string = String(buffer: byteBuffer)
+        let id: String = try .init(from: &byteBuffer, type: type, format: format, context: context)
         do {
-            try self.init(string)
+            try self.init(id)
         } catch {
-            throw DecodingError.typeMismatch(Self.self, .init(codingPath: [], debugDescription: "Unexpected value: \(string)"))
+            throw DecodingError.typeMismatch(Self.self, .init(codingPath: [], debugDescription: "Unexpected value: \(id)"))
         }
     }
 }
 
-extension PackageStatus: PostgresDecodable, PostgresEncodable {
+extension PackageStatus: PostgresCodable {
     static var psqlType: PostgresDataType = .null
     static var psqlFormat: PostgresFormat { .text }
 

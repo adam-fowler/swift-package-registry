@@ -1,6 +1,6 @@
 @_spi(ConnectionPool) import PostgresNIO
 
-enum PackageStatus: String, Codable {
+enum PackageStatus: String {
     case ok
     case deleted
     case processing
