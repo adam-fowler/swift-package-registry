@@ -1,23 +1,24 @@
+import Logging
 import NIOCore
-
-/// Manifest repository
-protocol ManifestRepository {
-    func add(_ id: PackageReleaseIdentifier, manifests: [ManifestVersion]) async throws
-    func get(_ id: PackageReleaseIdentifier) async throws -> [ManifestVersion]?
-}
 
 class MemoryManifestRepository: ManifestRepository {
     init() {
         self.manifests = .init()
     }
 
-    func add(_ id: PackageReleaseIdentifier, manifests: [ManifestVersion]) async throws {
+    typealias Context = Void
+
+    func withContext<Value>(logger: Logger, _ process: (Context) async throws -> Value) async throws -> Value {
+        try await process(())
+    }
+
+    func add(_ id: PackageReleaseIdentifier, manifests: Manifests, context: Context) async throws {
         self.manifests[id] = manifests
     }
 
-    func get(_ id: PackageReleaseIdentifier) async throws -> [ManifestVersion]? {
+    func get(_ id: PackageReleaseIdentifier, context: Context) async throws -> Manifests? {
         return self.manifests[id]
     }
 
-    var manifests: [PackageReleaseIdentifier: [ManifestVersion]]
+    var manifests: [PackageReleaseIdentifier: Manifests]
 }

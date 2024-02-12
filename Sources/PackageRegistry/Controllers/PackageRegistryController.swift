@@ -10,12 +10,12 @@ extension HTTPField.Name {
     static var digest: Self { .init("Digest")! }
 }
 
-struct PackageRegistryController<PackageReleases: PackageReleaseRepository, Manifests: ManifestRepository> {
+struct PackageRegistryController<PackageReleasesRepo: PackageReleaseRepository, ManifestsRepo: ManifestRepository> {
     typealias Context = RequestContext
 
     let storage: FileStorage
-    let packageRepository: PackageReleases
-    let manifestRepository: Manifests
+    let packageRepository: PackageReleasesRepo
+    let manifestRepository: ManifestsRepo
 
     func addRoutes(to group: HBRouterGroup<Context>) {
         group.get("/{scope}/{name}", use: self.list)
@@ -113,26 +113,27 @@ struct PackageRegistryController<PackageReleases: PackageReleaseRepository, Mani
         let swiftVersion = request.uri.queryParameters.get("swift-version")
 
         let id = try PackageIdentifier(scope: scope, name: name)
-        guard let manifests = try await manifestRepository.get(.init(packageId: id, version: version)) else {
+        guard let manifests = try await manifestRepository.withContext(logger: context.logger, { context in
+            try await self.manifestRepository.get(.init(packageId: id, version: version), context: context)
+        }) else {
             return .init(status: .notFound)
         }
-        let manifest: ManifestVersion?
+        let manifest: ByteBuffer
+        var manifestVersion: String?
         if let swiftVersion {
-            manifest = manifests.first { $0.swiftVersion == swiftVersion } ?? manifests.first { $0.swiftVersion == nil }
+            let foundManifest = manifests.versions.first { $0.swiftVersion == swiftVersion }
+            manifest = foundManifest?.manifest ?? manifests.default
+            manifestVersion = foundManifest?.swiftVersion
         } else {
-            manifest = manifests.first { $0.swiftVersion == swiftVersion } ?? manifests.first { $0.swiftVersion == nil }
+            manifest = manifests.default
         }
-        guard let manifest else {
-            return .init(status: .notFound)
-        }
-        let filename = if let version = manifest.swiftVersion { "Package@swift-\(version).swift" } else { "Package.swift" }
-        let alternateVersions = manifests.compactMap(\.swiftVersion)
+        let filename = if let manifestVersion { "Package@swift-\(manifestVersion).swift" } else { "Package.swift" }
         var headers: HTTPFields = .init()
-        headers[values: .link] = alternateVersions.map { "<https://localhost:8080/repository/\(scope)/\(name)/\(version)/Package.swift?swift-version=\($0)>; rel=\"alternate\"; filename=\"Package@swift-\($0).swift\"; swift-tools-version=\"\($0)\"" }
+        headers[values: .link] = manifests.versions.map { "<https://localhost:8080/repository/\(scope)/\(name)/\(version)/Package.swift?swift-version=\($0.swiftVersion)>; rel=\"alternate\"; filename=\"Package@swift-\($0.swiftVersion).swift\"; swift-tools-version=\"\($0.swiftVersion)\"" }
         headers[.contentType] = "text/x-swift"
         headers[.contentDisposition] = "attachment; filename=\"\(filename)\""
         headers[.cacheControl] = "public, immutable"
-        return .init(status: .ok, headers: headers, body: .init(byteBuffer: manifest.manifest))
+        return .init(status: .ok, headers: headers, body: .init(byteBuffer: manifest))
     }
 
     /// Download source archive for a package release
@@ -219,15 +220,17 @@ struct PackageRegistryController<PackageReleases: PackageReleaseRepository, Mani
         try await self.storage.writeFile(filename, buffer: ByteBuffer(data: createRequest.sourceArchive), context: context)
         // process zip file and extract package.swift
         let manifests = try await self.extractManifestsFromZipFile(self.storage.rootFolder + filename)
-        guard manifests.count > 0 else {
+        guard let manifests else {
             throw Problem(
                 status: .unprocessableContent,
                 detail: "package doesn't contain a valid manifest (Package.swift) file"
             )
         }
-        try await self.manifestRepository.add(.init(packageId: id, version: version), manifests: manifests)
-        // save release metadata
+        try await self.manifestRepository.withContext(logger: context.logger) { context in
+            try await self.manifestRepository.add(.init(packageId: id, version: version), manifests: manifests, context: context)
+        }
         try await self.packageRepository.withContext(logger: context.logger) { context in
+            // save release metadata
             guard try await self.packageRepository.add(packageRelease, context: context) else {
                 throw Problem(
                     status: .conflict,
@@ -240,10 +243,10 @@ struct PackageRegistryController<PackageReleases: PackageReleaseRepository, Mani
     }
 
     /// Extract manifests from zip file
-    func extractManifestsFromZipFile(_ filename: String) async throws -> [ManifestVersion] {
+    func extractManifestsFromZipFile(_ filename: String) async throws -> Manifests? {
         do {
             let zipFileManager = ZipFileManager()
-            return try await zipFileManager.withZipFile(filename) { zip in
+            return try await zipFileManager.withZipFile(filename) { zip -> Manifests? in
                 let contents = zipFileManager.contents(of: zip)
                 let packageSwiftFiles = try await contents.compactMap { file -> (filename: String, position: ZipFilePosition)? in
                     let filename = file.filename
@@ -255,20 +258,21 @@ struct PackageRegistryController<PackageReleases: PackageReleaseRepository, Mani
                         return nil
                     }
                 }.collect(maxElements: .max)
-                var manifests: [ManifestVersion] = []
+                var manifestVersions: [Manifests.Version] = []
+                var defaultManifest: ByteBuffer?
                 for file in packageSwiftFiles {
-                    let version: String?
                     if file.filename == "/package.swift" {
-                        version = nil
+                        defaultManifest = try await zipFileManager.loadFile(zip, at: file.position)
                     } else if let v = file.filename.wholeMatch(of: packageSwiftRegex)?.output.1 {
-                        version = String(v)
+                        let version = String(v)
+                        let fileContents = try await zipFileManager.loadFile(zip, at: file.position)
+                        manifestVersions.append(.init(manifest: fileContents, swiftVersion: version))
                     } else {
                         continue
                     }
-                    let fileContents = try await zipFileManager.loadFile(zip, at: file.position)
-                    manifests.append(.init(manifest: fileContents, swiftVersion: version))
                 }
-                return manifests
+                guard let defaultManifest else { return nil }
+                return .init(default: defaultManifest, versions: manifestVersions)
             }
         } catch {
             throw Problem(status: .internalServerError, detail: "\(error)")
@@ -281,7 +285,7 @@ private let packageSwiftRegex = Regex {
     Optionally {
         "@swift-"
         Capture {
-            OneOrMore(.digit)
+            OneOrMore(.anyOf("0123456789."))
         }
     }
     ".swift"

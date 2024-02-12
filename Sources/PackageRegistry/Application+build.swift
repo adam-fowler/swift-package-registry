@@ -40,12 +40,13 @@ public func buildApplication(_ args: some AppArguments) async throws -> some HBA
         let migrations = Migrations(repository: PostgresMigrationRepository(client: client))
         await migrations.add(CreatePackageRelease())
         await migrations.add(CreateURLPackageReference())
+        await migrations.add(CreateManifest())
 
         // Add package registry endpoints
         PackageRegistryController(
             storage: storage,
             packageRepository: PostgresPackageReleaseRepository(client: client),
-            manifestRepository: MemoryManifestRepository()
+            manifestRepository: PostgresManifestRepository(client: client)
         ).addRoutes(to: router.group("registry"))
 
         postgresClient = client
