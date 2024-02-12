@@ -24,7 +24,6 @@ public func buildApplication(_ args: some AppArguments) async throws -> some HBA
     let router = HBRouter(context: RequestContext.self, options: .autoGenerateHeadEndpoints)
     router.middlewares.add(ProblemMiddleware())
     router.middlewares.add(HBLogRequestsMiddleware(.debug))
-    router.middlewares.add(VersionMiddleware(version: "1"))
     router.get("/health") { _, _ -> HTTPResponse.Status in
         .ok
     }

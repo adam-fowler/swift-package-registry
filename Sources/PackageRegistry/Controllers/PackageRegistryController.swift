@@ -18,6 +18,7 @@ struct PackageRegistryController<PackageReleasesRepo: PackageReleaseRepository, 
     let manifestRepository: ManifestsRepo
 
     func addRoutes(to group: HBRouterGroup<Context>) {
+        group.add(middleware: VersionMiddleware(version: "1"))
         group.get("/{scope}/{name}", use: self.list)
         group.get("/{scope}/{name}/{version}.zip", use: self.download)
         group.get("/{scope}/{name}/{version}/Package.swift", use: self.getManifest)
