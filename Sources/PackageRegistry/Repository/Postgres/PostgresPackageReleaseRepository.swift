@@ -1,8 +1,7 @@
 import Foundation
-@_spi(ConnectionPool) import PostgresNIO
+import PostgresNIO
 
 struct PostgresPackageReleaseRepository: PackageReleaseRepository {
-    typealias Context = PostgresContext
     struct Error: Swift.Error {
         let message: String
     }
@@ -10,42 +9,36 @@ struct PostgresPackageReleaseRepository: PackageReleaseRepository {
     let client: PostgresClient
     static var statusDataType: PostgresDataType!
 
-    func withContext<Value>(logger: Logger, _ process: (Context) async throws -> Value) async throws -> Value {
-        try await self.client.withConnection { connection in
-            try await process(.init(connection: connection, logger: logger))
-        }
-    }
-
-    func add(_ package: PackageRelease, context: Context) async throws -> Bool {
+    func add(_ package: PackageRelease, logger: Logger) async throws -> Bool {
         let releaseID = package.releaseID.id
-        _ = try await context.connection.query(
+        _ = try await client.query(
             "INSERT INTO PackageRelease VALUES (\(releaseID), \(package), \(package.id), 'ok')",
-            logger: context.logger
+            logger: logger
         )
         if let repositoryURLs = package.metadata?.repositoryURLs {
             for url in repositoryURLs {
-                _ = try await context.connection.query(
+                _ = try await client.query(
                     "INSERT INTO urls VALUES (\(url), \(package.id))",
-                    logger: context.logger
+                    logger: logger
                 )
             }
         }
         return true
     }
 
-    func get(id: PackageIdentifier, version: Version, context: Context) async throws -> PackageRelease? {
+    func get(id: PackageIdentifier, version: Version, logger: Logger) async throws -> PackageRelease? {
         let releaseId = PackageReleaseIdentifier(packageId: id, version: version)
-        let stream = try await context.connection.query(
+        let stream = try await client.query(
             "SELECT release FROM PackageRelease WHERE id = \(releaseId.id)",
-            logger: context.logger
+            logger: logger
         )
         return try await stream.decode(PackageRelease.self, context: .default).first { _ in true }
     }
 
-    func list(id: PackageIdentifier, context: Context) async throws -> [ListRelease] {
-        let stream = try await context.connection.query(
+    func list(id: PackageIdentifier, logger: Logger) async throws -> [ListRelease] {
+        let stream = try await client.query(
             "SELECT release, status FROM PackageRelease WHERE package_id = \(id.id)",
-            logger: context.logger
+            logger: logger
         )
         var releases: [ListRelease] = []
         for try await (release, status) in stream.decode((PackageRelease, PackageStatus).self, context: .default) {
@@ -54,18 +47,18 @@ struct PostgresPackageReleaseRepository: PackageReleaseRepository {
         return releases
     }
 
-    func setStatus(id: PackageIdentifier, version: Version, status: PackageStatus, context: Context) async throws {
+    func setStatus(id: PackageIdentifier, version: Version, status: PackageStatus, logger: Logger) async throws {
         let releaseId = PackageReleaseIdentifier(packageId: id, version: version)
-        _ = try await context.connection.query(
+        _ = try await client.query(
             "UPDATE PackageRelease SET status = \(status) WHERE id = \(releaseId.id)",
-            logger: context.logger
+            logger: logger
         )
     }
 
-    func query(url: String, context: Context) async throws -> [PackageIdentifier] {
-        let stream = try await context.connection.query(
+    func query(url: String, logger: Logger) async throws -> [PackageIdentifier] {
+        let stream = try await client.query(
             "SELECT package_id FROM urls WHERE url = \(url)",
-            logger: context.logger
+            logger: logger
         )
         var packages: [PackageIdentifier] = []
         for try await (packageId) in stream.decode(PackageIdentifier.self, context: .default) {

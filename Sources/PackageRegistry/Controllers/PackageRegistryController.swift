@@ -11,13 +11,13 @@ extension HTTPField.Name {
 }
 
 struct PackageRegistryController<PackageReleasesRepo: PackageReleaseRepository, ManifestsRepo: ManifestRepository> {
-    typealias Context = RequestContext
+    typealias Context = PackageRegistryRequestContext
 
     let storage: FileStorage
     let packageRepository: PackageReleasesRepo
     let manifestRepository: ManifestsRepo
 
-    func addRoutes(to group: HBRouterGroup<Context>) {
+    func addRoutes(to group: RouterGroup<Context>) {
         group.add(middleware: VersionMiddleware(version: "1"))
         group.get("/{scope}/{name}", use: self.list)
         group.get("/{scope}/{name}/{version}.zip", use: self.download)
@@ -28,7 +28,7 @@ struct PackageRegistryController<PackageReleasesRepo: PackageReleaseRepository, 
         group.on("**", method: .options, use: self.options)
     }
 
-    @Sendable func options(_: HBRequest, context _: Context) async throws -> HBResponse {
+    @Sendable func options(_: Request, context _: Context) throws -> Response {
         return .init(
             status: .ok,
             headers: [
@@ -39,14 +39,12 @@ struct PackageRegistryController<PackageReleasesRepo: PackageReleaseRepository, 
     }
 
     /// List package releases
-    @Sendable func list(_: HBRequest, context: Context) async throws -> HBEditedResponse<ListReleaseResponse> {
+    @Sendable func list(_: Request, context: Context) async throws -> EditedResponse<ListReleaseResponse> {
         let scope = try context.parameters.require("scope")
         let name = try context.parameters.require("name")
         let id = try PackageIdentifier(scope: scope, name: name)
-        let releases = try await self.packageRepository.withContext(logger: context.logger) { context in
-            return try await self.packageRepository.list(id: id, context: context)
-        }
-        guard releases.count > 0 else { throw HBHTTPError(.notFound) }
+        let releases = try await self.packageRepository.list(id: id, logger: context.logger)
+        guard releases.count > 0 else { throw HTTPError(.notFound) }
         let releasesResponse = releases.compactMap {
             if $0.status.shoudBeListed {
                 return (
@@ -72,19 +70,16 @@ struct PackageRegistryController<PackageReleasesRepo: PackageReleaseRepository, 
     }
 
     /// Fetch metadata for a package release
-    @Sendable func getMetadata(_: HBRequest, context: Context) async throws -> HBEditedResponse<PackageRelease> {
+    @Sendable func getMetadata(_: Request, context: Context) async throws -> EditedResponse<PackageRelease> {
         let scope = try context.parameters.require("scope")
         let name = try context.parameters.require("name")
         let version = try context.parameters.require("version", as: Version.self)
         let id = try PackageIdentifier(scope: scope, name: name)
-        let (release, sortedReleases) = try await packageRepository.withContext(logger: context.logger) { context in
-            guard let release = try await packageRepository.get(id: id, version: version, context: context) else {
-                throw HBHTTPError(.notFound)
-            }
-            let releases = try await packageRepository.list(id: id, context: context)
-            let sortedReleases = releases.sorted { $0.version < $1.version }
-            return (release, sortedReleases)
+        guard let release = try await packageRepository.get(id: id, version: version, logger: context.logger) else {
+            throw HTTPError(.notFound)
         }
+        let releases = try await packageRepository.list(id: id, logger: context.logger)
+        let sortedReleases = releases.sorted { $0.version < $1.version }
 
         // Construct Link header
         var headers: HTTPFields = .init()
@@ -107,16 +102,14 @@ struct PackageRegistryController<PackageReleasesRepo: PackageReleaseRepository, 
     }
 
     /// Fetch manifest for a package release
-    @Sendable func getManifest(_ request: HBRequest, context: Context) async throws -> HBResponse {
+    @Sendable func getManifest(_ request: Request, context: Context) async throws -> Response {
         let scope = try context.parameters.require("scope")
         let name = try context.parameters.require("name")
         let version = try context.parameters.require("version", as: Version.self)
         let swiftVersion = request.uri.queryParameters.get("swift-version")
 
         let id = try PackageIdentifier(scope: scope, name: name)
-        guard let manifests = try await manifestRepository.withContext(logger: context.logger, { context in
-            try await self.manifestRepository.get(.init(packageId: id, version: version), context: context)
-        }) else {
+        guard let manifests = try await self.manifestRepository.get(.init(packageId: id, version: version), logger: context.logger) else {
             return .init(status: .notFound)
         }
         let manifest: ByteBuffer
@@ -138,7 +131,7 @@ struct PackageRegistryController<PackageReleasesRepo: PackageReleaseRepository, 
     }
 
     /// Download source archive for a package release
-    @Sendable func download(_: HBRequest, context: Context) async throws -> HBResponse {
+    @Sendable func download(_: Request, context: Context) async throws -> Response {
         let scope = try context.parameters.require("scope")
         let name = try context.parameters.require("name")
         let version = try context.parameters.require("version", as: Version.self)
@@ -146,16 +139,15 @@ struct PackageRegistryController<PackageReleasesRepo: PackageReleaseRepository, 
 
         // get metadata
         let id = try PackageIdentifier(scope: scope, name: name)
-        let release = try await packageRepository.withContext(logger: context.logger) { context in
-            try await self.packageRepository.get(id: id, version: version, context: context)
-        }
+        let release = try await self.packageRepository.get(id: id, version: version, logger: context.logger)
+    
         guard let release else {
-            throw HBHTTPError(.notFound)
+            throw HTTPError(.notFound)
         }
         let digest = release.resources.first { $0.name == "source-archive" }?.checksum
         let responseBody = try await self.storage.readFile(filename, context: context)
         var headers: HTTPFields = [
-            .contentType: HBMediaType.applicationZip.description,
+            .contentType: MediaType.applicationZip.description,
             .contentDisposition: "attachment; filename=\"\(name)-\(version).zip\"",
             .cacheControl: "public, immutable",
         ]
@@ -169,25 +161,23 @@ struct PackageRegistryController<PackageReleasesRepo: PackageReleaseRepository, 
         )
     }
 
-    struct Identifiers: HBResponseEncodable {
+    struct Identifiers: ResponseEncodable {
         let identifiers: [PackageIdentifier]
     }
 
     /// Lookup package identifiers registered for a URL
-    @Sendable func lookupIdentifiers(request: HBRequest, context: Context) async throws -> Identifiers {
+    @Sendable func lookupIdentifiers(request: Request, context: Context) async throws -> Identifiers {
         var url = try request.uri.queryParameters.require("url")
         url = url.standardizedGitURL()
-        let identifiers = try await packageRepository.withContext(logger: context.logger) { context in
-            try await self.packageRepository.query(url: url, context: context)
-        }
+        let identifiers = try await self.packageRepository.query(url: url, logger: context.logger)
         guard identifiers.count > 0 else {
-            throw HBHTTPError(.notFound)
+            throw HTTPError(.notFound)
         }
         return .init(identifiers: identifiers)
     }
 
     /// Create a package release
-    @Sendable func createRelease(_ request: HBRequest, context: Context) async throws -> HBResponse {
+    @Sendable func createRelease(_ request: Request, context: Context) async throws -> Response {
         if request.headers[.expect] == "100 (Continue)" {
             throw Problem(
                 status: .expectationFailed,
@@ -199,7 +189,7 @@ struct PackageRegistryController<PackageReleasesRepo: PackageReleaseRepository, 
         let name = try context.parameters.require("name")
         let version = try context.parameters.require("version", as: Version.self)
         guard let contentType = request.headers[.contentType],
-              let mediaType = HBMediaType(from: contentType),
+              let mediaType = MediaType(from: contentType),
               case .multipartForm = mediaType,
               let parameter = mediaType.parameter,
               parameter.name == "boundary"
@@ -227,18 +217,15 @@ struct PackageRegistryController<PackageReleasesRepo: PackageReleaseRepository, 
                 detail: "package doesn't contain a valid manifest (Package.swift) file"
             )
         }
-        try await self.manifestRepository.withContext(logger: context.logger) { context in
-            try await self.manifestRepository.add(.init(packageId: id, version: version), manifests: manifests, context: context)
-        }
-        try await self.packageRepository.withContext(logger: context.logger) { context in
-            // save release metadata
-            guard try await self.packageRepository.add(packageRelease, context: context) else {
-                throw Problem(
-                    status: .conflict,
-                    type: ProblemType.versionAlreadyExists.url,
-                    detail: "a release with version \(version) already exists"
-                )
-            }
+        // save manifests
+        try await self.manifestRepository.add(.init(packageId: id, version: version), manifests: manifests, logger: context.logger)
+        // save release metadata
+        guard try await self.packageRepository.add(packageRelease, logger: context.logger) else {
+            throw Problem(
+                status: .conflict,
+                type: ProblemType.versionAlreadyExists.url,
+                detail: "a release with version \(version) already exists"
+            )
         }
         return .init(status: .created)
     }

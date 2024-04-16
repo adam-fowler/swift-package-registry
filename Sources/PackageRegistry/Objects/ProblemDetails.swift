@@ -4,7 +4,7 @@ import NIOCore
 
 /// Error type used to generate Error output as detailed in RFC 7807
 /// https://datatracker.ietf.org/doc/html/rfc7807
-struct Problem: Error, Encodable, HBHTTPResponseError {
+struct Problem: Error, Encodable, HTTPResponseError {
     let status: HTTPResponse.Status
     let type: String?
     let detail: String?

@@ -1,7 +1,8 @@
-@_spi(ConnectionPool) import PostgresNIO
+import PostgresNIO
+import HummingbirdPostgres
 
-struct CreateManifest: Migration {
-    func migrate(connection: PostgresConnection, logger: Logger) async throws {
+struct CreateManifest: PostgresMigration {
+    func apply(connection: PostgresConnection, logger: Logger) async throws {
         try await connection.query(
             """
             CREATE TABLE manifests (

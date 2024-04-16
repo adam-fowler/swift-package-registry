@@ -6,7 +6,7 @@ extension HTTPField.Name {
     static var contentVersion: Self { .init("Content-Version")! }
 }
 
-struct VersionMiddleware<Context: HBBaseRequestContext>: HBMiddlewareProtocol {
+struct VersionMiddleware<Context: BaseRequestContext>: RouterMiddleware {
     let version: String
     /// Accept header regex as defined in
     /// https://github.com/apple/swift-package-manager/blob/main/Documentation/PackageRegistry/Registry.md#35-api-versioning
@@ -28,7 +28,7 @@ struct VersionMiddleware<Context: HBBaseRequestContext>: HBMiddlewareProtocol {
         }
     }
 
-    func handle(_ request: HBRequest, context: Context, next: (HBRequest, Context) async throws -> HBResponse) async throws -> HBResponse {
+    func handle(_ request: Request, context: Context, next: (Request, Context) async throws -> Response) async throws -> Response {
         guard let accept = request.headers[.accept] else {
             throw Problem(
                 status: .badRequest,
@@ -55,7 +55,7 @@ struct VersionMiddleware<Context: HBBaseRequestContext>: HBMiddlewareProtocol {
             var response = try await next(request, context)
             response.headers[.contentVersion] = self.version
             return response
-        } catch let error as HBHTTPError {
+        } catch let error as HTTPError {
             var error = error
             error.headers[.contentVersion] = self.version
             throw error

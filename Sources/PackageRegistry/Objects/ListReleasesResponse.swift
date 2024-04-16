@@ -4,7 +4,7 @@ import Hummingbird
 /// Response return by list package releases request
 ///
 /// refer to: https://github.com/apple/swift-package-manager/blob/main/Documentation/PackageRegistry/Registry.md#41-list-package-releases
-struct ListReleaseResponse: HBResponseEncodable {
+struct ListReleaseResponse: ResponseEncodable {
     struct Release: Codable {
         struct Problem: Codable {
             let status: Int

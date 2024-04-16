@@ -1,10 +1,11 @@
 import Hummingbird
 import Logging
+import NIOCore
 
-struct RequestContext: HBRequestContext {
-    init(allocator: ByteBufferAllocator, logger: Logger) {
-        self.coreContext = .init(allocator: allocator, logger: logger)
+struct PackageRegistryRequestContext: RequestContext {
+    init(channel: Channel, logger: Logger) {
+        self.coreContext = .init(allocator: channel.allocator, logger: logger)
     }
 
-    var coreContext: HBCoreRequestContext
+    var coreContext: CoreRequestContext
 }

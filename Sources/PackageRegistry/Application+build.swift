@@ -1,8 +1,9 @@
 import Hummingbird
+import HummingbirdPostgres
 import HummingbirdTLS
 import Logging
 import NIOSSL
-@_spi(ConnectionPool) import PostgresNIO
+import PostgresNIO
 
 /// Application arguments protocol. We use a protocol so we can call
 /// `HBApplication.configure` inside Tests as well as in the App executable.
@@ -15,28 +16,28 @@ public protocol AppArguments {
     var revert: Bool { get }
 }
 
-public func buildApplication(_ args: some AppArguments) async throws -> some HBApplicationProtocol {
+public func buildApplication(_ args: some AppArguments) async throws -> some ApplicationProtocol {
     let logger = {
         var logger = Logger(label: "PackageRegistry")
         logger.logLevel = .debug
         return logger
     }()
-    let router = HBRouter(context: RequestContext.self, options: .autoGenerateHeadEndpoints)
+    let router = Router(context: PackageRegistryRequestContext.self, options: .autoGenerateHeadEndpoints)
     router.middlewares.add(ProblemMiddleware())
-    router.middlewares.add(HBLogRequestsMiddleware(.debug))
+    router.middlewares.add(LogRequestsMiddleware(.debug))
     router.get("/health") { _, _ -> HTTPResponse.Status in
         .ok
     }
     let storage = FileStorage(rootFolder: "registry")
 
     var postgresClient: PostgresClient?
-    let postgresMigrations: Migrations<PostgresMigrationRepository>?
+    let postgresMigrations: PostgresMigrations?
     if !args.inMemory {
         let client = PostgresClient(
             configuration: .init(host: "localhost", username: "spruser", password: "user", database: "swiftpackageregistry", tls: .disable),
             backgroundLogger: logger
         )
-        let migrations = Migrations(repository: PostgresMigrationRepository(client: client))
+        let migrations = PostgresMigrations()
         await migrations.add(CreatePackageRelease())
         await migrations.add(CreateURLPackageReference())
         await migrations.add(CreateManifest())
@@ -60,7 +61,7 @@ public func buildApplication(_ args: some AppArguments) async throws -> some HBA
         postgresMigrations = nil
     }
 
-    var app = try HBApplication(
+    var app = try Application(
         router: router,
         server: .tls(tlsConfiguration: tlsConfiguration),
         configuration: .init(
@@ -71,13 +72,13 @@ public func buildApplication(_ args: some AppArguments) async throws -> some HBA
     )
 
     if let postgresClient {
-        app.addServices(PostgresClientService(client: postgresClient))
+        app.addServices(postgresClient)
         app.runBeforeServerStart {
             do {
                 if args.revert {
-                    try await postgresMigrations?.revert(logger: logger, dryRun: false)
+                    try await postgresMigrations?.revert(client: postgresClient, logger: logger, dryRun: false)
                 }
-                try await postgresMigrations?.migrate(logger: logger, dryRun: false)
+                try await postgresMigrations?.apply(client: postgresClient, logger: logger, dryRun: false)
                 try await PackageStatus.setDataType(client: postgresClient, logger: logger)
             } catch {
                 print(String(reflecting: error))

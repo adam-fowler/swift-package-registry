@@ -1,4 +1,4 @@
-@_spi(ConnectionPool) import PostgresNIO
+import PostgresNIO
 
 struct PostgresContext {
     let connection: PostgresConnection

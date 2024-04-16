@@ -10,6 +10,15 @@
       }
     },
     {
+      "identity" : "hummingbird-postgres",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/hummingbird-project/hummingbird-postgres.git",
+      "state" : {
+        "revision" : "563c58617d82d90fb7c4ec8fe89d5e83156db5e8",
+        "version" : "0.1.0"
+      }
+    },
+    {
       "identity" : "multipart-kit",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/vapor/multipart-kit.git",
@@ -23,8 +32,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/vapor/postgres-nio.git",
       "state" : {
-        "revision" : "69ccfdf4c80144d845e3b439961b7ec6cd7ae33f",
-        "version" : "1.20.2"
+        "revision" : "6f0fc054babeed13850f9014e03ced7a1d714868",
+        "version" : "1.21.0"
       }
     },
     {
@@ -185,8 +194,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/swift-server/swift-service-lifecycle.git",
       "state" : {
-        "revision" : "d673fdc912f09ad83f34dd00ef823d2d80fbd3a7",
-        "version" : "2.3.0"
+        "revision" : "d7fe0e731499a8dcce53bf4cbbc812c8e565d3a7",
+        "version" : "2.4.1"
       }
     },
     {

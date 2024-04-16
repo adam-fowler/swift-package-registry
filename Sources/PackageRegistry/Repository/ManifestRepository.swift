@@ -13,10 +13,6 @@ struct Manifests {
 
 /// Manifest repository
 protocol ManifestRepository {
-    associatedtype Context
-
-    func withContext<Value>(logger: Logger, _ process: (Context) async throws -> Value) async throws -> Value
-
-    func add(_ id: PackageReleaseIdentifier, manifests: Manifests, context: Context) async throws
-    func get(_ id: PackageReleaseIdentifier, context: Context) async throws -> Manifests?
+    func add(_ id: PackageReleaseIdentifier, manifests: Manifests, logger: Logger) async throws
+    func get(_ id: PackageReleaseIdentifier, logger: Logger) async throws -> Manifests?
 }

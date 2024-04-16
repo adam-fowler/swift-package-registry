@@ -15,11 +15,7 @@ final class MemoryPackageReleaseRepository: PackageReleaseRepository {
         self.packages = .init()
     }
 
-    func withContext<Value>(logger: Logger, _ process: (Context) async throws -> Value) async throws -> Value {
-        try await process(())
-    }
-
-    func add(_ release: PackageRelease, context: Context) throws -> Bool {
+    func add(_ release: PackageRelease, logger: Logger) throws -> Bool {
         let releaseID = release.releaseID
         if self.packages[releaseID.id] != nil {
             return false
@@ -28,12 +24,12 @@ final class MemoryPackageReleaseRepository: PackageReleaseRepository {
         return true
     }
 
-    func get(id: PackageIdentifier, version: Version, context: Context) throws -> PackageRelease? {
+    func get(id: PackageIdentifier, version: Version, logger: Logger) throws -> PackageRelease? {
         let releaseId = PackageReleaseIdentifier(packageId: id, version: version)
         return self.packages[releaseId.id]?.release
     }
 
-    func list(id: PackageIdentifier, context: Context) throws -> [ListRelease] {
+    func list(id: PackageIdentifier, logger: Logger) throws -> [ListRelease] {
         var releases = [ListRelease].init()
         for release in self.packages.values {
             if release.release.id == id {
@@ -43,12 +39,12 @@ final class MemoryPackageReleaseRepository: PackageReleaseRepository {
         return releases
     }
 
-    func setStatus(id: PackageIdentifier, version: Version, status: PackageStatus, context: Context) {
+    func setStatus(id: PackageIdentifier, version: Version, status: PackageStatus, logger: Logger) {
         let releaseId = PackageReleaseIdentifier(packageId: id, version: version)
         self.packages[releaseId.id]?.status = status
     }
 
-    func query(url: String, context: Context) async throws -> [PackageIdentifier] {
+    func query(url: String, logger: Logger) async throws -> [PackageIdentifier] {
         var identifierSet = Set<PackageIdentifier>()
         for package in self.packages.values {
             if package.release.metadata?.repositoryURLs?.first(where: { $0 == url }) != nil {

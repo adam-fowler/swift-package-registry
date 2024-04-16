@@ -6,17 +6,11 @@ class MemoryManifestRepository: ManifestRepository {
         self.manifests = .init()
     }
 
-    typealias Context = Void
-
-    func withContext<Value>(logger: Logger, _ process: (Context) async throws -> Value) async throws -> Value {
-        try await process(())
-    }
-
-    func add(_ id: PackageReleaseIdentifier, manifests: Manifests, context: Context) async throws {
+    func add(_ id: PackageReleaseIdentifier, manifests: Manifests, logger: Logger) async throws {
         self.manifests[id] = manifests
     }
 
-    func get(_ id: PackageReleaseIdentifier, context: Context) async throws -> Manifests? {
+    func get(_ id: PackageReleaseIdentifier, logger: Logger) async throws -> Manifests? {
         return self.manifests[id]
     }
 

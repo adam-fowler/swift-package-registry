@@ -1,4 +1,4 @@
-@_spi(ConnectionPool) import PostgresNIO
+import PostgresNIO
 
 enum PackageStatus: String {
     case ok
@@ -34,13 +34,9 @@ struct ListRelease {
 
 /// Package release repository
 protocol PackageReleaseRepository {
-    associatedtype Context
-
-    func withContext<Value>(logger: Logger, _ process: (Context) async throws -> Value) async throws -> Value
-
-    func add(_ release: PackageRelease, context: Context) async throws -> Bool
-    func get(id: PackageIdentifier, version: Version, context: Context) async throws -> PackageRelease?
-    func list(id: PackageIdentifier, context: Context) async throws -> [ListRelease]
-    func setStatus(id: PackageIdentifier, version: Version, status: PackageStatus, context: Context) async throws
-    func query(url: String, context: Context) async throws -> [PackageIdentifier]
+    func add(_ release: PackageRelease, logger: Logger) async throws -> Bool
+    func get(id: PackageIdentifier, version: Version, logger: Logger) async throws -> PackageRelease?
+    func list(id: PackageIdentifier, logger: Logger) async throws -> [ListRelease]
+    func setStatus(id: PackageIdentifier, version: Version, status: PackageStatus, logger: Logger) async throws
+    func query(url: String, logger: Logger) async throws -> [PackageIdentifier]
 }

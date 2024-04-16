@@ -16,12 +16,12 @@ let errorDescriptions: [ProblemType: String] = [
     .noAcceptHeader: "A client SHOULD set the Accept header field to specify the API version of a request.",
 ]
 
-struct ErrorDescriptionController<Context: HBBaseRequestContext> {
-    func addRoutes(to group: HBRouterGroup<Context>) {
+struct ErrorDescriptionController<Context: BaseRequestContext> {
+    func addRoutes(to group: RouterGroup<Context>) {
         group.get("{code}") { _, context in
             let code = try context.parameters.require("code", as: ProblemType.self)
             guard let description = errorDescriptions[code] else {
-                throw HBHTTPError(.noContent)
+                throw HTTPError(.noContent)
             }
             return description
         }

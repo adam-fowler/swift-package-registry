@@ -1,8 +1,9 @@
 import Hummingbird
+import NIOPosix
 
 struct FileStorage: Storage {
     let rootFolder: String
-    let fileIO = HBFileIO()
+    let fileIO = FileIO()
 
     init(rootFolder: String) {
         self.rootFolder = rootFolder.addSuffix("/")
@@ -11,7 +12,7 @@ struct FileStorage: Storage {
     func writeFile<AS: AsyncSequence>(
         _ filename: String,
         contents: AS,
-        context: some HBBaseRequestContext
+        context: some BaseRequestContext
     ) async throws where AS.Element == ByteBuffer {
         let fullFilename = self.rootFolder + filename.dropPrefix("/")
         try await self.fileIO.writeFile(contents: contents, path: fullFilename, context: context)
@@ -20,7 +21,7 @@ struct FileStorage: Storage {
     func writeFile(
         _ filename: String,
         buffer: ByteBuffer,
-        context: some HBBaseRequestContext
+        context: some BaseRequestContext
     ) async throws {
         let fullFilename = self.rootFolder + filename.dropPrefix("/")
         try await self.fileIO.writeFile(buffer: buffer, path: fullFilename, context: context)
@@ -28,16 +29,17 @@ struct FileStorage: Storage {
 
     func makeDirectory(
         _ path: String,
-        context: some HBBaseRequestContext
+        context: some BaseRequestContext
     ) async throws {
         let fullPath = self.rootFolder + path.dropPrefix("/")
-        try await self.fileIO.makeDirectory(path: fullPath, context: context)
+        let nonBlockingFileIO = NonBlockingFileIO(threadPool:.singleton)
+        try await nonBlockingFileIO.createDirectory(path: fullPath, withIntermediateDirectories: true, mode: S_IRWXU)
     }
 
     func readFile(
         _ filename: String,
-        context: some HBBaseRequestContext
-    ) async throws -> HBResponseBody {
+        context: some BaseRequestContext
+    ) async throws -> ResponseBody {
         let fullFilename = self.rootFolder + filename.dropPrefix("/")
         return try await self.fileIO.loadFile(path: fullFilename, context: context)
     }

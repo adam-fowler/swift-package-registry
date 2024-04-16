@@ -1,7 +1,8 @@
-@_spi(ConnectionPool) import PostgresNIO
+import PostgresNIO
+import HummingbirdPostgres
 
-struct CreateURLPackageReference: Migration {
-    func migrate(connection: PostgresConnection, logger: Logger) async throws {
+struct CreateURLPackageReference: PostgresMigration {
+    func apply(connection: PostgresConnection, logger: Logger) async throws {
         try await connection.query(
             """
             CREATE TABLE urls (

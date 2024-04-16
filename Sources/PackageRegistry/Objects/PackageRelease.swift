@@ -37,7 +37,7 @@ struct PackageReleaseIdentifier: Hashable, Equatable {
 /// Package release information
 ///
 /// Refer to: https://github.com/apple/swift-package-manager/blob/main/Documentation/PackageRegistry/Registry.md#42-fetch-information-about-a-package-release
-struct PackageRelease: Codable, HBResponseEncodable {
+struct PackageRelease: Codable, ResponseEncodable {
     struct Resource: Codable {
         struct Signing: Codable {
             let signatureBase64Encoded: String

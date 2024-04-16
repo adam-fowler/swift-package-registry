@@ -1,4 +1,4 @@
-@_spi(ConnectionPool) import PostgresNIO
+import PostgresNIO
 
 extension PackageRelease: PostgresCodable {
     /// The data type encoded into the `byteBuffer` in ``encode(into:context:)``.
