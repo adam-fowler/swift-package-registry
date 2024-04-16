@@ -22,7 +22,6 @@ struct PackageRegistryController<PackageReleasesRepo: PackageReleaseRepository, 
 
     func addRoutes(to group: RouterGroup<Context>) {
         group.add(middleware: VersionMiddleware(version: "1"))
-        group.get("/publish-requirements", use: self.publishRequirements)
         group.get("/{scope}/{name}", use: self.list)
         group.get("/{scope}/{name}/{version}.zip", use: self.download)
         group.get("/{scope}/{name}/{version}/Package.swift", use: self.getManifest)
@@ -40,23 +39,6 @@ struct PackageRegistryController<PackageReleasesRepo: PackageReleaseRepository, 
                 .link: "<https://github.com/apple/swift-package-manager/blob/main/Documentation/PackageRegistry/Registry.md>; rel=\"service-doc\",<https://github.com/apple/swift-package-manager/blob/main/Documentation/PackageRegistry/registry.openapi.yaml>; rel=\"service-desc\"",
             ]
         )
-    }
-
-    /// Return publish requirements
-    struct PublishRequirementsResponse {
-        struct Metadata {
-            let location = ["in-request"]
-        }
-        struct Signing {
-            let required = false
-            let acceptedSignatureFormats = ["cms-1.0.0"]
-            let trustedRootCertificates: [String] = []
-        }
-        let metadata: Metadata = .init()
-        let signing: Signing = .init()
-    }
-    func publishRequirements(_ request: Request, context: Context) async throws -> PublishRequirementsResponse {
-        return PublishRequirementsResponse()
     }
 
     /// List package releases
