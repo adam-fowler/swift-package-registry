@@ -150,3 +150,5 @@ public struct ZipFileContentsAsyncSequence: AsyncSequence {
         return .init(manager: self.manager, zip: self.zip)
     }
 }
+
+extension unzFile: @unchecked Sendable {}

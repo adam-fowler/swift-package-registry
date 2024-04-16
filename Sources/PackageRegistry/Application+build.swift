@@ -17,6 +17,8 @@ public protocol AppArguments {
 }
 
 public func buildApplication(_ args: some AppArguments) async throws -> some ApplicationProtocol {
+    let serverName = "localhost"
+    let serverAddress = "\(serverName):\(args.port)"
     let logger = {
         var logger = Logger(label: "PackageRegistry")
         logger.logLevel = .debug
@@ -46,7 +48,8 @@ public func buildApplication(_ args: some AppArguments) async throws -> some App
         PackageRegistryController(
             storage: storage,
             packageRepository: PostgresPackageReleaseRepository(client: client),
-            manifestRepository: PostgresManifestRepository(client: client)
+            manifestRepository: PostgresManifestRepository(client: client),
+            urlRoot: "https://\(serverAddress)/registry/"
         ).addRoutes(to: router.group("registry"))
 
         postgresClient = client
@@ -56,7 +59,8 @@ public func buildApplication(_ args: some AppArguments) async throws -> some App
         PackageRegistryController(
             storage: storage,
             packageRepository: MemoryPackageReleaseRepository(),
-            manifestRepository: MemoryManifestRepository()
+            manifestRepository: MemoryManifestRepository(),
+            urlRoot: "https://\(serverAddress)/registry/"
         ).addRoutes(to: router.group("registry"))
         postgresMigrations = nil
     }
@@ -66,7 +70,7 @@ public func buildApplication(_ args: some AppArguments) async throws -> some App
         server: .tls(tlsConfiguration: tlsConfiguration),
         configuration: .init(
             address: .hostname(args.hostname, port: args.port),
-            serverName: "localhost:8080"
+            serverName: serverAddress
         ),
         logger: logger
     )

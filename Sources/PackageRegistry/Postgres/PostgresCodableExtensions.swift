@@ -2,7 +2,7 @@ import PostgresNIO
 
 extension PackageRelease: PostgresCodable {
     /// The data type encoded into the `byteBuffer` in ``encode(into:context:)``.
-    static var psqlType: PostgresDataType { .json }
+    static var psqlType: PostgresDataType { .jsonb }
 
     /// The Postgres encoding format used to encode the value into `byteBuffer` in ``encode(into:context:)``.
     static var psqlFormat: PostgresFormat { .binary }

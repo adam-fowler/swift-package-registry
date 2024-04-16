@@ -14,7 +14,7 @@ struct Problem: Error, Decodable {
 final class PackageRegistryTests: XCTestCase {
     struct TestArguments: AppArguments {
         var hostname: String { "localhost" }
-        var port: Int { 8080 }
+        var port: Int { 8081 }
         var inMemory = true
         var revert = false
     }

@@ -8,6 +8,8 @@ import Zip
 extension HTTPField.Name {
     static var link: Self { .init("Link")! }
     static var digest: Self { .init("Digest")! }
+    static var swiftPMSignature: Self { .init("X-Swift-Package-Signature")! }
+    static var swiftPMSignatureFormat: Self { .init("X-Swift-Package-Signature-Format")! }
 }
 
 struct PackageRegistryController<PackageReleasesRepo: PackageReleaseRepository, ManifestsRepo: ManifestRepository> {
@@ -16,6 +18,7 @@ struct PackageRegistryController<PackageReleasesRepo: PackageReleaseRepository, 
     let storage: FileStorage
     let packageRepository: PackageReleasesRepo
     let manifestRepository: ManifestsRepo
+    let urlRoot: String
 
     func addRoutes(to group: RouterGroup<Context>) {
         group.add(middleware: VersionMiddleware(version: "1"))
@@ -39,7 +42,7 @@ struct PackageRegistryController<PackageReleasesRepo: PackageReleaseRepository, 
     }
 
     /// List package releases
-    @Sendable func list(_: Request, context: Context) async throws -> EditedResponse<ListReleaseResponse> {
+    @Sendable func list(_ request: Request, context: Context) async throws -> EditedResponse<ListReleaseResponse> {
         let scope = try context.parameters.require("scope")
         let name = try context.parameters.require("name")
         let id = try PackageIdentifier(scope: scope, name: name)
@@ -50,7 +53,7 @@ struct PackageRegistryController<PackageReleasesRepo: PackageReleaseRepository, 
                 return (
                     $0.version.description,
                     ListReleaseResponse.Release(
-                        url: "https://localhost:8080/repository/\(scope)/\(name)/\($0.version)",
+                        url: "\(self.urlRoot)\(scope)/\(name)/\($0.version)",
                         problem: $0.status.problem
                     )
                 )
@@ -61,7 +64,7 @@ struct PackageRegistryController<PackageReleasesRepo: PackageReleaseRepository, 
         let response = ListReleaseResponse(releases: .init(releasesResponse) { first, _ in first })
         var headers: HTTPFields = .init()
         if let latestRelease = releases.max(by: { $0.version < $1.version }) {
-            headers[values: .link].append("<https://localhost:8080/repository/\(scope)/\(name)/\(latestRelease.version)>; rel=\"latest-version\"")
+            headers[values: .link].append("<\(self.urlRoot)\(scope)/\(name)/\(latestRelease.version)>; rel=\"latest-version\"")
         }
         return .init(
             headers: headers,
@@ -70,7 +73,7 @@ struct PackageRegistryController<PackageReleasesRepo: PackageReleaseRepository, 
     }
 
     /// Fetch metadata for a package release
-    @Sendable func getMetadata(_: Request, context: Context) async throws -> EditedResponse<PackageRelease> {
+    @Sendable func getMetadata(_ request: Request, context: Context) async throws -> EditedResponse<PackageRelease> {
         let scope = try context.parameters.require("scope")
         let name = try context.parameters.require("name")
         let version = try context.parameters.require("version", as: Version.self)
@@ -84,18 +87,18 @@ struct PackageRegistryController<PackageReleasesRepo: PackageReleaseRepository, 
         // Construct Link header
         var headers: HTTPFields = .init()
         if let latestRelease = sortedReleases.last {
-            headers[values: .link].append("<https://localhost:8080/repository/\(scope)/\(name)/\(latestRelease.version)>; rel=\"latest-version\"")
+            headers[values: .link].append("<\(self.urlRoot)\(scope)/\(name)/\(latestRelease.version)>; rel=\"latest-version\"")
         }
         if let index = sortedReleases.firstIndex(where: { $0.version == version }) {
             if index != sortedReleases.startIndex {
                 let prevIndex = sortedReleases.index(before: index)
                 let prevVersion = sortedReleases[prevIndex].version
-                headers[values: .link].append("<https://localhost:8080/repository/\(scope)/\(name)/\(prevVersion)>; rel=\"predecessor-version\"")
+                headers[values: .link].append("<\(self.urlRoot)\(scope)/\(name)/\(prevVersion)>; rel=\"predecessor-version\"")
             }
             let nextIndex = sortedReleases.index(after: index)
             if nextIndex != sortedReleases.endIndex {
                 let nextVersion = sortedReleases[nextIndex].version
-                headers[values: .link].append("<https://localhost:8080/repository/\(scope)/\(name)/\(nextVersion)>; rel=\"successor-version\"")
+                headers[values: .link].append("<\(self.urlRoot)\(scope)/\(name)/\(nextVersion)>; rel=\"successor-version\"")
             }
         }
         return .init(headers: headers, response: release)
@@ -123,7 +126,7 @@ struct PackageRegistryController<PackageReleasesRepo: PackageReleaseRepository, 
         }
         let filename = if let manifestVersion { "Package@swift-\(manifestVersion).swift" } else { "Package.swift" }
         var headers: HTTPFields = .init()
-        headers[values: .link] = manifests.versions.map { "<https://localhost:8080/repository/\(scope)/\(name)/\(version)/Package.swift?swift-version=\($0.swiftVersion)>; rel=\"alternate\"; filename=\"Package@swift-\($0.swiftVersion).swift\"; swift-tools-version=\"\($0.swiftVersion)\"" }
+        headers[values: .link] = manifests.versions.map { "<\(self.urlRoot)\(scope)/\(name)/\(version)/Package.swift?swift-version=\($0.swiftVersion)>; rel=\"alternate\"; filename=\"Package@swift-\($0.swiftVersion).swift\"; swift-tools-version=\"\($0.swiftVersion)\"" }
         headers[.contentType] = "text/x-swift"
         headers[.contentDisposition] = "attachment; filename=\"\(filename)\""
         headers[.cacheControl] = "public, immutable"
@@ -144,15 +147,18 @@ struct PackageRegistryController<PackageReleasesRepo: PackageReleaseRepository, 
         guard let release else {
             throw HTTPError(.notFound)
         }
-        let digest = release.resources.first { $0.name == "source-archive" }?.checksum
         let responseBody = try await self.storage.readFile(filename, context: context)
         var headers: HTTPFields = [
             .contentType: MediaType.applicationZip.description,
             .contentDisposition: "attachment; filename=\"\(name)-\(version).zip\"",
             .cacheControl: "public, immutable",
         ]
-        if let digest {
-            headers[.digest] = "sha256=\(digest)"
+        if let resource = release.resources.first(where: { $0.name == "source-archive" }) {
+            headers[.digest] = "sha256=\(resource.checksum)"
+            if let signing = resource.signing {
+                headers[.swiftPMSignature] = signing.signatureBase64Encoded
+                headers[.swiftPMSignatureFormat] = signing.signatureFormat
+            }
         }
         return .init(
             status: .ok,
@@ -178,13 +184,13 @@ struct PackageRegistryController<PackageReleasesRepo: PackageReleaseRepository, 
 
     /// Create a package release
     @Sendable func createRelease(_ request: Request, context: Context) async throws -> Response {
-        if request.headers[.expect] == "100 (Continue)" {
+        /*if request.headers[.expect] == "100-continue" {
             throw Problem(
                 status: .expectationFailed,
                 type: ProblemType.expectionsUnsupported.url,
                 detail: "expectations aren't supported"
             )
-        }
+        }*/
         let scope = try context.parameters.require("scope")
         let name = try context.parameters.require("name")
         let version = try context.parameters.require("version", as: Version.self)
@@ -204,6 +210,26 @@ struct PackageRegistryController<PackageReleasesRepo: PackageReleaseRepository, 
         let createRequest = try FormDataDecoder().decode(CreateReleaseRequest.self, from: body, boundary: parameter.value)
         let id = try PackageIdentifier(scope: scope, name: name)
         let packageRelease = try createRequest.createRelease(id: id, version: version)
+        // verify digest
+        if let digest = request.headers[.digest] {
+            guard digest == "sha-256=\(packageRelease.resources[0].checksum)" else {
+                throw Problem(
+                    status: .badRequest,
+                    type: ProblemType.invalidDigest.url,
+                    detail: "invalid digest"
+                )
+            }
+        }
+        // if package has signing data then verify signature header
+        if packageRelease.resources[0].signing != nil {
+            guard request.headers[.swiftPMSignatureFormat] == "cms-1.0.0" else  {
+                throw Problem(
+                    status: .badRequest,
+                    type: ProblemType.invalidSignatureFormat.url,
+                    detail: "invalid signature format"
+                )
+            }
+        }
         // save release zip
         let folder = "\(scope).\(name)"
         let filename = "\(scope).\(name)/\(version).zip"

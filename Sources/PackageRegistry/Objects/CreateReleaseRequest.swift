@@ -6,9 +6,9 @@ import Foundation
 /// refer to: https://github.com/apple/swift-package-manager/blob/main/Documentation/PackageRegistry/Registry.md#46-create-a-package-release
 struct CreateReleaseRequest: Codable {
     let sourceArchive: Data
-    let sourceArchiveSignature: Data?
+    let sourceArchiveSignature: String?
     let metadata: Data?
-    let metadataSignature: Data?
+    let metadataSignature: String?
 
     private enum CodingKeys: String, CodingKey {
         case sourceArchive = "source-archive"
@@ -22,7 +22,9 @@ struct CreateReleaseRequest: Codable {
             name: "source-archive",
             type: "application/zip",
             checksum: SHA256.hash(data: self.sourceArchive).hexDigest(),
-            signing: nil
+            signing: sourceArchiveSignature.map {
+                .init(signatureBase64Encoded: $0, signatureFormat: "cms-1.0.0")
+            }
         )
         do {
             let packageMetadata = try metadata.map {
