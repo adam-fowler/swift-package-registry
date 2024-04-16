@@ -7,6 +7,6 @@ DerivedData/
 .swiftpm/xcode/package.xcworkspace/contents.xcworkspacedata
 .netrc
 .vscode
-certs
+resources/certs
 registry
 TestProject

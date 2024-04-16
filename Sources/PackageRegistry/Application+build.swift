@@ -14,6 +14,7 @@ public protocol AppArguments {
     var port: Int { get }
     var inMemory: Bool { get }
     var revert: Bool { get }
+    var migrate: Bool { get }
 }
 
 public func buildApplication(_ args: some AppArguments) async throws -> some ApplicationProtocol {
@@ -82,7 +83,7 @@ public func buildApplication(_ args: some AppArguments) async throws -> some App
                 if args.revert {
                     try await postgresMigrations?.revert(client: postgresClient, logger: logger, dryRun: false)
                 }
-                try await postgresMigrations?.apply(client: postgresClient, logger: logger, dryRun: false)
+                try await postgresMigrations?.apply(client: postgresClient, logger: logger, dryRun: !(args.migrate || args.revert))
                 try await PackageStatus.setDataType(client: postgresClient, logger: logger)
             } catch {
                 print(String(reflecting: error))
@@ -95,8 +96,8 @@ public func buildApplication(_ args: some AppArguments) async throws -> some App
 
 var tlsConfiguration: TLSConfiguration {
     get throws {
-        let certificateChain = try NIOSSLCertificate.fromPEMFile("certs/localhost.pem")
-        let privateKey = try NIOSSLPrivateKey(file: "certs/localhost-key.pem", format: .pem)
+        let certificateChain = try NIOSSLCertificate.fromPEMFile("resources/certs/localhost.pem")
+        let privateKey = try NIOSSLPrivateKey(file: "resources/certs/localhost-key.pem", format: .pem)
         return TLSConfiguration.makeServerConfiguration(
             certificateChain: certificateChain.map { .certificate($0) },
             privateKey: .privateKey(privateKey)
