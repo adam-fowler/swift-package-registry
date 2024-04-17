@@ -2,7 +2,7 @@ import Logging
 import NIOConcurrencyHelpers
 
 /// Memory implementation of package release repository
-final class MemoryPackageReleaseRepository: PackageReleaseRepository {
+actor MemoryPackageReleaseRepository: PackageReleaseRepository {
     struct PackageReleaseStorage {
         let release: PackageRelease
         var status: PackageStatus

@@ -19,6 +19,15 @@
       }
     },
     {
+      "identity" : "hummingbird-auth",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/hummingbird-project/hummingbird-auth.git",
+      "state" : {
+        "revision" : "89ded2d532add1d17b9176a160c2e2714d0d833b",
+        "version" : "2.0.0-beta.1"
+      }
+    },
+    {
       "identity" : "hummingbird-postgres",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/hummingbird-project/hummingbird-postgres.git",
@@ -106,6 +115,15 @@
       "state" : {
         "revision" : "7fbb8b23b77ee548b3d0686b6faf735c1b3c7cb8",
         "version" : "1.1.0"
+      }
+    },
+    {
+      "identity" : "swift-extras-base64",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/swift-extras/swift-extras-base64.git",
+      "state" : {
+        "revision" : "97237cf1bc1feebaeb0febec91c1e1b9e4d839b3",
+        "version" : "0.7.0"
       }
     },
     {
