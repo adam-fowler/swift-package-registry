@@ -10,3 +10,4 @@ DerivedData/
 resources/certs
 registry
 TestProject
+.env
