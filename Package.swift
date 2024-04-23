@@ -36,7 +36,7 @@ let package = Package(
             ],
             swiftSettings: swiftSettings
         ),
-        .target(name: "CMinizip"),
+        .target(name: "CMinizip", linkerSettings: [.linkedLibrary("z")]),
         .target(name: "Zip", dependencies: [
             "CMinizip",
             .product(name: "NIOPosix", package: "swift-nio"),
