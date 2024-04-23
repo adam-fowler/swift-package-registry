@@ -16,7 +16,8 @@ import Hummingbird
 import HummingbirdAuth
 import NIOPosix
 
-struct BasicAuthenticator<Context: AuthRequestContext, Repository: UserRepository>: AuthenticatorMiddleware {
+struct BasicAuthenticator<Repository: UserRepository>: AuthenticatorMiddleware {
+    typealias Context = PackageRegistryRequestContext
     let repository: Repository
 
     func authenticate(request: Request, context: Context) async throws -> User? {

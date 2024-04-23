@@ -20,14 +20,19 @@ struct PackageRegistryController<PackageReleasesRepo: PackageReleaseRepository, 
     let manifestRepository: ManifestsRepo
     let urlRoot: String
 
-    func addRoutes(to group: RouterGroup<Context>) {
+    func addRoutes(to group: RouterGroup<Context>, basicAuthenticator: BasicAuthenticator<some UserRepository>) {
+        group.group()
+            .add(middleware: basicAuthenticator)
+            .post("/", use: self.login)
         group.add(middleware: VersionMiddleware(version: "1"))
         group.get("/{scope}/{name}", use: self.list)
         group.get("/{scope}/{name}/{version}.zip", use: self.download)
         group.get("/{scope}/{name}/{version}/Package.swift", use: self.getManifest)
         group.get("/identifiers", use: self.lookupIdentifiers)
         group.get("/{scope}/{name}/{version}", use: self.getMetadata)
-        group.put("/{scope}/{name}/{version}", use: self.createRelease)
+        group.group()
+            .add(middleware: basicAuthenticator)
+            .put("/{scope}/{name}/{version}", use: self.createRelease)
         group.on("**", method: .options, use: self.options)
     }
 
@@ -39,6 +44,11 @@ struct PackageRegistryController<PackageReleasesRepo: PackageReleaseRepository, 
                 .link: "<https://github.com/apple/swift-package-manager/blob/main/Documentation/PackageRegistry/Registry.md>; rel=\"service-doc\",<https://github.com/apple/swift-package-manager/blob/main/Documentation/PackageRegistry/registry.openapi.yaml>; rel=\"service-desc\"",
             ]
         )
+    }
+
+    @Sendable func login(_ request: Request, context: Context) async throws -> HTTPResponse.Status {
+        guard context.auth.has(User.self) else { throw HTTPError(.unauthorized) }
+        return .ok
     }
 
     /// List package releases
@@ -143,7 +153,7 @@ struct PackageRegistryController<PackageReleasesRepo: PackageReleaseRepository, 
         // get metadata
         let id = try PackageIdentifier(scope: scope, name: name)
         let release = try await self.packageRepository.get(id: id, version: version, logger: context.logger)
-    
+
         guard let release else {
             throw HTTPError(.notFound)
         }
@@ -184,13 +194,14 @@ struct PackageRegistryController<PackageReleasesRepo: PackageReleaseRepository, 
 
     /// Create a package release
     @Sendable func createRelease(_ request: Request, context: Context) async throws -> Response {
-        /*if request.headers[.expect] == "100-continue" {
-            throw Problem(
-                status: .expectationFailed,
-                type: ProblemType.expectionsUnsupported.url,
-                detail: "expectations aren't supported"
-            )
-        }*/
+        guard context.auth.has(User.self) else { throw HTTPError(.unauthorized) }
+        /* if request.headers[.expect] == "100-continue" {
+             throw Problem(
+                 status: .expectationFailed,
+                 type: ProblemType.expectionsUnsupported.url,
+                 detail: "expectations aren't supported"
+             )
+         } */
         let scope = try context.parameters.require("scope")
         let name = try context.parameters.require("name")
         let version = try context.parameters.require("version", as: Version.self)
@@ -209,6 +220,14 @@ struct PackageRegistryController<PackageReleasesRepo: PackageReleaseRepository, 
         let body = try await request.body.collect(upTo: .max)
         let createRequest = try FormDataDecoder().decode(CreateReleaseRequest.self, from: body, boundary: parameter.value)
         let id = try PackageIdentifier(scope: scope, name: name)
+        // verify package release hasn't been published already
+        guard try await self.packageRepository.get(id: id, version: version, logger: context.logger) == nil else {
+            throw Problem(
+                status: .conflict,
+                type: ProblemType.versionAlreadyExists.url,
+                detail: "a release with version \(version) already exists"
+            )
+        }
         let packageRelease = try createRequest.createRelease(id: id, version: version)
         // verify digest
         if let digest = request.headers[.digest] {
@@ -222,7 +241,7 @@ struct PackageRegistryController<PackageReleasesRepo: PackageReleaseRepository, 
         }
         // if package has signing data then verify signature header
         if packageRelease.resources[0].signing != nil {
-            guard request.headers[.swiftPMSignatureFormat] == "cms-1.0.0" else  {
+            guard request.headers[.swiftPMSignatureFormat] == "cms-1.0.0" else {
                 throw Problem(
                     status: .badRequest,
                     type: ProblemType.invalidSignatureFormat.url,
@@ -243,8 +262,6 @@ struct PackageRegistryController<PackageReleasesRepo: PackageReleaseRepository, 
                 detail: "package doesn't contain a valid manifest (Package.swift) file"
             )
         }
-        // save manifests
-        try await self.manifestRepository.add(.init(packageId: id, version: version), manifests: manifests, logger: context.logger)
         // save release metadata
         guard try await self.packageRepository.add(packageRelease, logger: context.logger) else {
             throw Problem(
@@ -253,6 +270,8 @@ struct PackageRegistryController<PackageReleasesRepo: PackageReleaseRepository, 
                 detail: "a release with version \(version) already exists"
             )
         }
+        // save manifests
+        try await self.manifestRepository.add(.init(packageId: id, version: version), manifests: manifests, logger: context.logger)
         return .init(status: .created)
     }
 

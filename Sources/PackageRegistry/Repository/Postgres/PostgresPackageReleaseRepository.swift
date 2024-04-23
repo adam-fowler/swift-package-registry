@@ -11,13 +11,21 @@ struct PostgresPackageReleaseRepository: PackageReleaseRepository {
 
     func add(_ package: PackageRelease, logger: Logger) async throws -> Bool {
         let releaseID = package.releaseID.id
-        _ = try await client.query(
-            "INSERT INTO PackageRelease VALUES (\(releaseID), \(package), \(package.id), 'ok')",
-            logger: logger
-        )
+        do {
+            _ = try await self.client.query(
+                "INSERT INTO PackageRelease VALUES (\(releaseID), \(package), \(package.id), 'ok')",
+                logger: logger
+            )
+        } catch let error as PSQLError {
+            if error.serverError == .uniqueViolation {
+                return false
+            } else {
+                throw error
+            }
+        }
         if let repositoryURLs = package.metadata?.repositoryURLs {
             for url in repositoryURLs {
-                _ = try await client.query(
+                _ = try await self.client.query(
                     "INSERT INTO urls VALUES (\(url), \(package.id))",
                     logger: logger
                 )
@@ -49,7 +57,7 @@ struct PostgresPackageReleaseRepository: PackageReleaseRepository {
 
     func setStatus(id: PackageIdentifier, version: Version, status: PackageStatus, logger: Logger) async throws {
         let releaseId = PackageReleaseIdentifier(packageId: id, version: version)
-        _ = try await client.query(
+        _ = try await self.client.query(
             "UPDATE PackageRelease SET status = \(status) WHERE id = \(releaseId.id)",
             logger: logger
         )

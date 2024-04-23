@@ -44,25 +44,35 @@ public func buildApplication(_ args: some AppArguments) async throws -> some App
         await migrations.add(CreatePackageRelease())
         await migrations.add(CreateURLPackageReference())
         await migrations.add(CreateManifest())
+        await migrations.add(CreateUsers())
+        await migrations.add(AddAdminUser())
 
+        let userRepository = PostgresUserRepository(client: client)
         // Add package registry endpoints
         PackageRegistryController(
             storage: storage,
             packageRepository: PostgresPackageReleaseRepository(client: client),
             manifestRepository: PostgresManifestRepository(client: client),
             urlRoot: "https://\(serverAddress)/registry/"
-        ).addRoutes(to: router.group("registry"))
+        ).addRoutes(
+            to: router.group("registry"),
+            basicAuthenticator: BasicAuthenticator(repository: userRepository)
+        )
 
         postgresClient = client
         postgresMigrations = migrations
     } else {
+        let userRepository = MemoryUserRepository()
         // Add package registry endpoints
         PackageRegistryController(
             storage: storage,
             packageRepository: MemoryPackageReleaseRepository(),
             manifestRepository: MemoryManifestRepository(),
             urlRoot: "https://\(serverAddress)/registry/"
-        ).addRoutes(to: router.group("registry"))
+        ).addRoutes(
+            to: router.group("registry"),
+            basicAuthenticator: BasicAuthenticator(repository: userRepository)
+        )
         postgresMigrations = nil
     }
 
