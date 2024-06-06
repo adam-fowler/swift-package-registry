@@ -1,18 +1,19 @@
 import Logging
 import NIOCore
+import NIOConcurrencyHelpers
 
-class MemoryManifestRepository: ManifestRepository {
+final class MemoryManifestRepository: ManifestRepository {
     init() {
-        self.manifests = .init()
+        self.manifests = .init(.init())
     }
 
     func add(_ id: PackageReleaseIdentifier, manifests: Manifests, logger: Logger) async throws {
-        self.manifests[id] = manifests
+        self.manifests.withLockedValue { $0[id] = manifests }
     }
 
     func get(_ id: PackageReleaseIdentifier, logger: Logger) async throws -> Manifests? {
-        return self.manifests[id]
+        return self.manifests.withLockedValue { $0[id] }
     }
 
-    var manifests: [PackageReleaseIdentifier: Manifests]
+    let manifests: NIOLockedValueBox<[PackageReleaseIdentifier: Manifests]>
 }

@@ -33,7 +33,7 @@ struct ListRelease {
 }
 
 /// Package release repository
-protocol PackageReleaseRepository {
+protocol PackageReleaseRepository: Sendable {
     func add(_ release: PackageRelease, logger: Logger) async throws -> Bool
     func get(id: PackageIdentifier, version: Version, logger: Logger) async throws -> PackageRelease?
     func list(id: PackageIdentifier, logger: Logger) async throws -> [ListRelease]

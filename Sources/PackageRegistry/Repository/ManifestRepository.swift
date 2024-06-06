@@ -12,7 +12,7 @@ struct Manifests {
 }
 
 /// Manifest repository
-protocol ManifestRepository {
+protocol ManifestRepository: Sendable {
     func add(_ id: PackageReleaseIdentifier, manifests: Manifests, logger: Logger) async throws
     func get(_ id: PackageReleaseIdentifier, logger: Logger) async throws -> Manifests?
 }
