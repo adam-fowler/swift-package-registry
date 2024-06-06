@@ -3,6 +3,7 @@ import HummingbirdPostgres
 import HummingbirdTLS
 import Logging
 import NIOSSL
+import OpenAPIHummingbird
 import PostgresNIO
 
 /// Application arguments protocol. We use a protocol so we can call
@@ -35,6 +36,10 @@ public func buildApplication(_ args: some AppArguments) async throws -> some App
 
     var postgresClient: PostgresClient?
     let postgresMigrations: PostgresMigrations?
+
+    let registryGroup = router.group("registry")
+        .add(middleware: TaskLocalContextMiddleware())
+        
     if !args.inMemory {
         let client = PostgresClient(
             configuration: .init(host: "localhost", username: "spruser", password: "user", database: "swiftpackageregistry", tls: .disable),
@@ -45,24 +50,25 @@ public func buildApplication(_ args: some AppArguments) async throws -> some App
         await migrations.add(CreateURLPackageReference())
         await migrations.add(CreateManifest())
 
-        // Add package registry endpoints
-        PackageRegistryController(
+        let api = PackageRegistryImplementationl(
             storage: storage,
             packageRepository: PostgresPackageReleaseRepository(client: client),
             manifestRepository: PostgresManifestRepository(client: client),
             urlRoot: "https://\(serverAddress)/registry/"
-        ).addRoutes(to: router.group("registry"))
-
+        )
+        try api.registerHandlers(on: registryGroup)
+        
         postgresClient = client
         postgresMigrations = migrations
     } else {
         // Add package registry endpoints
-        PackageRegistryController(
+        let api = PackageRegistryImplementationl(
             storage: storage,
             packageRepository: MemoryPackageReleaseRepository(),
             manifestRepository: MemoryManifestRepository(),
             urlRoot: "https://\(serverAddress)/registry/"
-        ).addRoutes(to: router.group("registry"))
+        )
+        try api.registerHandlers(on: registryGroup)
         postgresMigrations = nil
     }
 

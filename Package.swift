@@ -11,6 +11,9 @@ let package = Package(
     dependencies: [
         .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.3.0"),
         .package(url: "https://github.com/apple/swift-crypto.git", from: "3.0.0"),
+        .package(url: "https://github.com/apple/swift-openapi-generator", from: "1.0.0"),
+        .package(url: "https://github.com/apple/swift-openapi-runtime", from: "1.0.0"),
+        .package(url: "https://github.com/swift-server/swift-openapi-hummingbird", from: "2.0.0-beta"),
         .package(url: "https://github.com/apple/swift-nio.git", from: "2.63.0"),
         .package(url: "https://github.com/hummingbird-project/hummingbird.git", from: "2.0.0-beta.2"),
         .package(url: "https://github.com/hummingbird-project/hummingbird-postgres.git", from: "0.1.0"),
@@ -27,10 +30,20 @@ let package = Package(
                 .product(name: "HummingbirdPostgres", package: "hummingbird-postgres"),
                 .product(name: "HummingbirdTLS", package: "hummingbird"),
                 .product(name: "MultipartKit", package: "multipart-kit"),
+                .product(name: "OpenAPIHummingbird", package: "swift-openapi-hummingbird"),
                 .product(name: "PostgresNIO", package: "postgres-nio"),
+                .byName(name: "PackageRegistryAPI"),
                 .byName(name: "Zip"),
             ],
             swiftSettings: swiftSettings
+        ),
+        .target(name: "PackageRegistryAPI",
+            dependencies: [
+                .product(name: "OpenAPIRuntime", package: "swift-openapi-runtime")
+            ],
+            plugins: [
+                .plugin(name: "OpenAPIGenerator", package: "swift-openapi-generator"),
+            ]
         ),
         .target(name: "CMinizip"),
         .target(name: "Zip", dependencies: [
