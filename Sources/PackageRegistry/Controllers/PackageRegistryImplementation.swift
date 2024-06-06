@@ -87,14 +87,91 @@ struct PackageRegistryImplementationl<PackageReleasesRepo: PackageReleaseReposit
         guard let context = PackageRegistryRequestContext.context else { 
             return .undocumented(statusCode: 500, .init())
         }
-        throw HTTPError(.serviceUnavailable)
+        guard let version = Version(input.path.version) else {
+            throw HTTPError(.badRequest)
+        }
+
+        let id = try PackageIdentifier(scope: input.path.scope, name: input.path.name)
+        guard let manifests = try await self.manifestRepository.get(.init(packageId: id, version: version), logger: context.logger) else {
+            throw HTTPError(.notFound)
+        }
+        let manifest: ByteBuffer
+        var manifestVersion: String?
+        if let swiftVersion = input.query.swift_hyphen_version {
+            let foundManifest = manifests.versions.first { $0.swiftVersion == swiftVersion }
+            manifest = foundManifest?.manifest ?? manifests.default
+            manifestVersion = foundManifest?.swiftVersion
+        } else {
+            manifest = manifests.default
+        }
+        let filename = if let manifestVersion { "Package@swift-\(manifestVersion).swift" } else { "Package.swift" }
+        let linkHeader = manifests.versions.map { "<\(self.urlRoot)\(input.path.scope)/\(input.path.name)/\(version)/Package.swift?swift-version=\($0.swiftVersion)>; rel=\"alternate\"; filename=\"Package@swift-\($0.swiftVersion).swift\"; swift-tools-version=\"\($0.swiftVersion)\"" }
+
+        return .ok(
+            .init(
+                headers: .init(
+                    Cache_hyphen_Control: "public, immutable", 
+                    Content_hyphen_Disposition: "attachment; filename=\"\(filename)\"", 
+                    Content_hyphen_Version: ._1, 
+                    Link: linkHeader.joined(separator: ", ")
+                ), 
+                body: .text_x_hyphen_swift(.init(manifest.readableBytesView)))
+        )
     }
 
     func downloadSourceArchive(_ input: PackageRegistryAPI.Operations.downloadSourceArchive.Input) async throws -> PackageRegistryAPI.Operations.downloadSourceArchive.Output {
         guard let context = PackageRegistryRequestContext.context else { 
             return .undocumented(statusCode: 500, .init())
         }
-        throw HTTPError(.serviceUnavailable)
+        guard let version = Version(input.path.version) else {
+            throw HTTPError(.badRequest)
+        }
+        let filename = "\(input.path.scope).\(input.path.name)/\(version).zip"
+
+        // get metadata
+        let id = try PackageIdentifier(scope: input.path.scope, name: input.path.name)
+        let release = try await self.packageRepository.get(id: id, version: version, logger: context.logger)
+    
+        guard let release else {
+            throw HTTPError(.notFound)
+        }
+        let responseBody = try await self.storage.readFile(filename, context: context)
+        var headers: HTTPFields = [
+            .contentType: MediaType.applicationZip.description,
+            .contentDisposition: "attachment; filename=\"\(input.path.name)-\(version).zip\"",
+            .cacheControl: "public, immutable",
+        ]
+        var digest: String?
+        if let resource = release.resources.first(where: { $0.name == "source-archive" }) {
+            digest = "sha256=\(resource.checksum)"
+            /* signing headers not supported
+            if let signing = resource.signing {
+                headers[.swiftPMSignature] = signing.signatureBase64Encoded
+                headers[.swiftPMSignatureFormat] = signing.signatureFormat
+            }
+            */
+        }
+        return .ok(
+            .init(
+                headers: .init(
+                    Accept_hyphen_Ranges: nil, 
+                    Cache_hyphen_Control: "public, immutable", 
+                    Content_hyphen_Disposition: "attachment; filename=\"\(input.path.name)-\(version).zip\"", 
+                    Content_hyphen_Version: ._1, 
+                    Digest: digest ?? "", 
+                    Link: nil
+                    // no SwiftPM signature headers
+                ),
+                body: .application_zip(
+                    .init(
+                        //  Not working at the moment, Use NIOFileSystem to provide a stream
+                        responseBody.map { [UInt8](buffer: $0) },
+                        length: .unknown,
+                        iterationBehavior: .single
+                    )
+                )
+            )
+        )
     }
 
     func lookupPackageIdentifiersByURL(_ input: PackageRegistryAPI.Operations.lookupPackageIdentifiersByURL.Input) async throws -> PackageRegistryAPI.Operations.lookupPackageIdentifiersByURL.Output {
