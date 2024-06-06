@@ -18,7 +18,7 @@ import HummingbirdAuth
 
 /// Session authentication. Get UUID attached to session id in request and return
 /// the associated user
-struct SessionAuthenticator<Context: AuthRequestContext, Repository: UserRepository>: SessionMiddleware {
+struct SessionAuthenticator<Context: AuthRequestContext & RequestContext, Repository: UserRepository>: SessionMiddleware {
     typealias Session = UUID
     typealias Value = User
 
