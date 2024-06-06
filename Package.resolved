@@ -14,8 +14,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/hummingbird-project/hummingbird.git",
       "state" : {
-        "branch" : "existential-server-channel",
-        "revision" : "c3be83407c62e22156d0c5da81e055a5526dd272"
+        "branch" : "main",
+        "revision" : "277a33e6f777973809667484cdbaf4e38d7e0617"
       }
     },
     {

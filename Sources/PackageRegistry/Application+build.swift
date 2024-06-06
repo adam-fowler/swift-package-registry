@@ -35,8 +35,9 @@ public func buildApplication(_ args: some AppArguments) async throws -> any Appl
     }
     let storage = FileStorage(rootFolder: "registry")
 
-    var postgresClient: PostgresClient?
+    let postgresClient: PostgresClient?
     let postgresMigrations: PostgresMigrations?
+    let registryRoutes: RouteCollection<PackageRegistryRequestContext>
     if !args.inMemory {
         let client = PostgresClient(
             configuration: .init(host: "localhost", username: "spruser", password: "user", database: "swiftpackageregistry", tls: .disable),
@@ -51,32 +52,30 @@ public func buildApplication(_ args: some AppArguments) async throws -> any Appl
 
         let userRepository = PostgresUserRepository(client: client)
         // Add package registry endpoints
-        PackageRegistryController(
+        registryRoutes = PackageRegistryController(
             storage: storage,
             packageRepository: PostgresPackageReleaseRepository(client: client),
             manifestRepository: PostgresManifestRepository(client: client),
             urlRoot: "https://\(serverAddress)/registry/"
-        ).addRoutes(
-            to: router.group("registry"),
-            basicAuthenticator: BasicAuthenticator(repository: userRepository)
-        )
+        ).routes(basicAuthenticator: BasicAuthenticator(repository: userRepository))
 
         postgresClient = client
         postgresMigrations = migrations
     } else {
         let userRepository = MemoryUserRepository()
         // Add package registry endpoints
-        PackageRegistryController(
+        registryRoutes = PackageRegistryController(
             storage: storage,
             packageRepository: MemoryPackageReleaseRepository(),
             manifestRepository: MemoryManifestRepository(),
             urlRoot: "https://\(serverAddress)/registry/"
-        ).addRoutes(
-            to: router.group("registry"),
-            basicAuthenticator: BasicAuthenticator(repository: userRepository)
-        )
+        ).routes(basicAuthenticator: BasicAuthenticator(repository: userRepository))
+        
+        postgresClient = nil
         postgresMigrations = nil
     }
+
+    router.group("registry").addRoutes(registryRoutes)
 
     var app: Application<RouterResponder<PackageRegistryRequestContext>>
     if let tlsCertificateChain = env.get("server_certificate_chain"),

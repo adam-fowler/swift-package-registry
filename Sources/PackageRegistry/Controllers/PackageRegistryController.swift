@@ -20,20 +20,22 @@ struct PackageRegistryController<PackageReleasesRepo: PackageReleaseRepository, 
     let manifestRepository: ManifestsRepo
     let urlRoot: String
 
-    func addRoutes(to group: RouterGroup<Context>, basicAuthenticator: BasicAuthenticator<some UserRepository>) {
-        group.group()
+    func routes(basicAuthenticator: BasicAuthenticator<some UserRepository>) -> RouteCollection<Context> {
+        let routes = RouteCollection(context: Context.self)
+        routes.group()
             .add(middleware: basicAuthenticator)
             .post("/", use: self.login)
-        group.add(middleware: VersionMiddleware(version: "1"))
-        group.get("/{scope}/{name}", use: self.list)
-        group.get("/{scope}/{name}/{version}.zip", use: self.download)
-        group.get("/{scope}/{name}/{version}/Package.swift", use: self.getManifest)
-        group.get("/identifiers", use: self.lookupIdentifiers)
-        group.get("/{scope}/{name}/{version}", use: self.getMetadata)
-        group.group()
+        routes.add(middleware: VersionMiddleware(version: "1"))
+        routes.get("/{scope}/{name}", use: self.list)
+        routes.get("/{scope}/{name}/{version}.zip", use: self.download)
+        routes.get("/{scope}/{name}/{version}/Package.swift", use: self.getManifest)
+        routes.get("/identifiers", use: self.lookupIdentifiers)
+        routes.get("/{scope}/{name}/{version}", use: self.getMetadata)
+        routes.group()
             .add(middleware: basicAuthenticator)
             .put("/{scope}/{name}/{version}", use: self.createRelease)
-        group.on("**", method: .options, use: self.options)
+        routes.on("**", method: .options, use: self.options)
+        return routes
     }
 
     @Sendable func options(_: Request, context _: Context) throws -> Response {
