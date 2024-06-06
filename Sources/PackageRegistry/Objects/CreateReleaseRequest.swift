@@ -26,24 +26,25 @@ struct CreateReleaseRequest: Codable {
                 .init(signatureBase64Encoded: $0, signatureFormat: "cms-1.0.0")
             }
         )
-        do {
-            let packageMetadata = try metadata.map {
-                var packageMetadata = try JSONDecoder().decode(PackageMetadata.self, from: $0)
-                if let repositoryURLs = packageMetadata.repositoryURLs {
-                    packageMetadata.repositoryURLs = repositoryURLs.map { $0.standardizedGitURL() }
-                }
-                return packageMetadata
-            }
-            return .init(
-                id: id,
-                version: version,
-                resources: [resource],
-                metadata: packageMetadata,
-                publishedAt: self.iso8601Formatter.string(from: .now)
-            )
-        } catch {
-            throw Problem(status: .unprocessableContent, detail: "invalid JSON provided for release metadata")
+        guard let metadata else {
+            throw Problem(status: .unprocessableContent, detail: "Release metadata is required to publish release.")
         }
+        var packageMetadata: PackageMetadata
+        do {
+            packageMetadata = try JSONDecoder().decode(PackageMetadata.self, from: metadata)
+            if let repositoryURLs = packageMetadata.repositoryURLs {
+                packageMetadata.repositoryURLs = repositoryURLs.map { $0.standardizedGitURL() }
+            }
+        } catch {
+            throw Problem(status: .unprocessableContent, detail: "invalid JSON provided for release metadata.")
+        }
+        return .init(
+            id: id,
+            version: version,
+            resources: [resource],
+            metadata: packageMetadata,
+            publishedAt: self.iso8601Formatter.string(from: .now)
+        )
     }
 
     var iso8601Formatter: ISO8601DateFormatter {
