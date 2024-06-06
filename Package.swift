@@ -13,7 +13,7 @@ let package = Package(
         .package(url: "https://github.com/apple/swift-crypto.git", from: "3.0.0"),
         .package(url: "https://github.com/apple/swift-openapi-generator", from: "1.0.0"),
         .package(url: "https://github.com/apple/swift-openapi-runtime", from: "1.0.0"),
-        .package(url: "https://github.com/swift-server/swift-openapi-hummingbird", from: "2.0.0-beta"),
+        .package(url: "https://github.com/swift-server/swift-openapi-hummingbird", branch: "router-methods"),
         .package(url: "https://github.com/apple/swift-nio.git", from: "2.63.0"),
         .package(url: "https://github.com/hummingbird-project/hummingbird.git", from: "2.0.0-beta.2"),
         .package(url: "https://github.com/hummingbird-project/hummingbird-postgres.git", from: "0.1.0"),

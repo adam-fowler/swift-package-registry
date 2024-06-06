@@ -208,6 +208,15 @@
       }
     },
     {
+      "identity" : "swift-openapi-hummingbird",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/swift-server/swift-openapi-hummingbird",
+      "state" : {
+        "branch" : "router-methods",
+        "revision" : "f52915bc381677b591621f3a8488f67fef8bf627"
+      }
+    },
+    {
       "identity" : "swift-openapi-runtime",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/apple/swift-openapi-runtime",
