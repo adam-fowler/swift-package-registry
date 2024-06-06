@@ -7,7 +7,7 @@ struct App: AsyncParsableCommand, AppArguments {
     var hostname: String = "127.0.0.1"
 
     @Option(name: .shortAndLong)
-    var port: Int = 8081
+    var port: Int = 8080
 
     @Flag(name: .shortAndLong)
     var inMemory: Bool = false
