@@ -17,6 +17,7 @@ final class PackageRegistryTests: XCTestCase {
         var port: Int { 8081 }
         var inMemory = true
         var revert = false
+        var migrate = true
     }
 
     func testNoAcceptHeader() async throws {
