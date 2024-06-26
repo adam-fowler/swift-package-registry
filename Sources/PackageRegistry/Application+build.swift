@@ -19,7 +19,7 @@ public protocol AppArguments {
 }
 
 public func buildApplication(_ args: some AppArguments) async throws -> any ApplicationProtocol {
-    let env = try await Environment.shared.merging(with: .dotEnv())
+    let env = try await Environment().merging(with: .dotEnv())
     let serverName = env.get("server_name") ?? "localhost"
     let serverAddress = "\(serverName):\(args.port)"
     let logger = {
@@ -70,7 +70,7 @@ public func buildApplication(_ args: some AppArguments) async throws -> any Appl
             manifestRepository: MemoryManifestRepository(),
             urlRoot: "https://\(serverAddress)/registry/"
         ).routes(basicAuthenticator: BasicAuthenticator(repository: userRepository))
-        
+
         postgresClient = nil
         postgresMigrations = nil
     }
