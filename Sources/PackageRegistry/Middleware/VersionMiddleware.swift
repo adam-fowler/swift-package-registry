@@ -6,7 +6,7 @@ extension HTTPField.Name {
     static var contentVersion: Self { .init("Content-Version")! }
 }
 
-struct VersionMiddleware<Context: BaseRequestContext>: RouterMiddleware {
+struct VersionMiddleware<Context: RequestContext>: RouterMiddleware {
     let version: String
     /// Accept header regex as defined in
     /// https://github.com/apple/swift-package-manager/blob/main/Documentation/PackageRegistry/Registry.md#35-api-versioning

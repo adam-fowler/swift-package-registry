@@ -28,8 +28,8 @@ public func buildApplication(_ args: some AppArguments) async throws -> any Appl
         return logger
     }()
     let router = Router(context: PackageRegistryRequestContext.self, options: .autoGenerateHeadEndpoints)
-    router.middlewares.add(ProblemMiddleware())
-    router.middlewares.add(LogRequestsMiddleware(.debug))
+    router.add(middleware: LogRequestsMiddleware(.debug))
+    router.add(middleware: ProblemMiddleware())
     router.get("/health") { _, _ -> HTTPResponse.Status in
         .ok
     }

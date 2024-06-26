@@ -1,6 +1,6 @@
 import Hummingbird
 
-struct ProblemMiddleware<Context: BaseRequestContext>: RouterMiddleware {
+struct ProblemMiddleware<Context: RequestContext>: RouterMiddleware {
     func handle(_ request: Request, context: Context, next: (Request, Context) async throws -> Response) async throws -> Response {
         do {
             return try await next(request, context)

@@ -14,8 +14,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/hummingbird-project/hummingbird.git",
       "state" : {
-        "branch" : "main",
-        "revision" : "277a33e6f777973809667484cdbaf4e38d7e0617"
+        "revision" : "de24af2daf32e8ef9439823e7c72b3ee8676ef6c",
+        "version" : "2.0.0-beta.8"
       }
     },
     {
@@ -23,8 +23,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/hummingbird-project/hummingbird-auth.git",
       "state" : {
-        "revision" : "96c6000cd01aab174e49094746a252ca4e07033b",
-        "version" : "2.0.0-beta.2"
+        "revision" : "99a04d636139f1e6152ad32df951f25a22c26661",
+        "version" : "2.0.0-beta.3"
       }
     },
     {
