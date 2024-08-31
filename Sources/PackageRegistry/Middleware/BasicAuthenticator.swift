@@ -12,6 +12,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+import Bcrypt
 import Hummingbird
 import HummingbirdAuth
 import NIOPosix

@@ -32,8 +32,9 @@ struct Problem: Error, Encodable, HTTPResponseError {
         self.instance = instance
     }
 
-    func body(allocator: ByteBufferAllocator) -> ByteBuffer? {
-        try? JSONEncoder().encodeAsByteBuffer(self, allocator: allocator)
+    func response(from request: Request, context: some RequestContext) throws -> Response {
+        let body = (try? JSONEncoder().encodeAsByteBuffer(self, allocator: ByteBufferAllocator())) ?? .init()
+        return .init(status: self.status, headers: self.headers, body: .init(byteBuffer: body))
     }
 
     private enum CodingKeys: String, CodingKey {

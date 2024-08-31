@@ -136,6 +136,15 @@
       }
     },
     {
+      "identity" : "swift-jobs",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/hummingbird-project/swift-jobs.git",
+      "state" : {
+        "revision" : "954a963c39193ceeb25ecdd3777959a1e544ff7b",
+        "version" : "1.0.0-beta.3"
+      }
+    },
+    {
       "identity" : "swift-log",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/apple/swift-log.git",

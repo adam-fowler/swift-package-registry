@@ -1,4 +1,5 @@
 import Algorithms
+import Bcrypt
 import Foundation
 import HummingbirdAuth
 import HummingbirdPostgres

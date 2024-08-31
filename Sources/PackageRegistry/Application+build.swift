@@ -104,7 +104,7 @@ public func buildApplication(_ args: some AppArguments) async throws -> any Appl
 
     if let postgresClient {
         app.addServices(postgresClient)
-        app.runBeforeServerStart {
+        app.beforeServerStarts {
             do {
                 if args.revert {
                     try await postgresMigrations?.revert(client: postgresClient, logger: logger, dryRun: false)

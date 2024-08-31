@@ -27,6 +27,7 @@ let package = Package(
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
                 .product(name: "Crypto", package: "swift-crypto"),
                 .product(name: "Hummingbird", package: "hummingbird"),
+                .product(name: "Bcrypt", package: "hummingbird-auth"),
                 .product(name: "HummingbirdAuth", package: "hummingbird-auth"),
                 .product(name: "HummingbirdPostgres", package: "hummingbird-postgres"),
                 .product(name: "HummingbirdTLS", package: "hummingbird"),
