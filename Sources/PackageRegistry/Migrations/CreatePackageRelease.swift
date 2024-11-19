@@ -1,7 +1,8 @@
 import HummingbirdPostgres
+import PostgresMigrations
 import PostgresNIO
 
-struct CreatePackageRelease: PostgresMigration {
+struct CreatePackageRelease: DatabaseMigration {
     func apply(connection: PostgresConnection, logger: Logger) async throws {
         try await connection.query(
             "CREATE TYPE status AS ENUM ('processing', 'ok', 'deleted')",

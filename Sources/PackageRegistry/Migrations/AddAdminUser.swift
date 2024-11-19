@@ -1,12 +1,13 @@
 import Algorithms
-import Bcrypt
 import Foundation
 import HummingbirdAuth
+import HummingbirdBcrypt
 import HummingbirdPostgres
 import NIOPosix
+import PostgresMigrations
 import PostgresNIO
 
-struct AddAdminUser: PostgresMigration {
+struct AddAdminUser: DatabaseMigration {
     func apply(connection: PostgresConnection, logger: Logger) async throws {
         let password = String("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789".randomSample(count: 24))
         logger.critical("Admin password is \(password)")

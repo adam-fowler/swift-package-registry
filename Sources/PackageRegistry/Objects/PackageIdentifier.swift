@@ -2,9 +2,6 @@
 ///
 /// as defined in https://github.com/apple/swift-package-manager/blob/main/Documentation/PackageRegistry/Registry.md#36-package-identification
 struct PackageIdentifier: Hashable, Sendable, CustomStringConvertible {
-    static let scopeRegex: Regex = /\A[a-zA-Z0-9](?:[a-zA-Z0-9]|-(?=[a-zA-Z0-9])){0,38}\z/
-    static let nameRegex: Regex = /\A[a-zA-Z0-9](?:[a-zA-Z0-9]|[-_](?=[a-zA-Z0-9])){0,99}\z/
-    static let idRegex: Regex = /\A([a-zA-Z0-9_-]+).([a-zA-Z0-9_-]+)\z/
     let scope: String
     let name: String
 
@@ -12,8 +9,10 @@ struct PackageIdentifier: Hashable, Sendable, CustomStringConvertible {
     var description: String { "\(self.scope).\(self.name)" }
 
     init<S: StringProtocol>(scope: S, name: S) throws where S.SubSequence == Substring {
-        guard name.wholeMatch(of: Self.nameRegex) != nil,
-              scope.wholeMatch(of: Self.scopeRegex) != nil
+        let nameRegex = /\A[a-zA-Z0-9](?:[a-zA-Z0-9]|[-_](?=[a-zA-Z0-9])){0,99}\z/
+        let scopeRegex = /\A[a-zA-Z0-9](?:[a-zA-Z0-9]|-(?=[a-zA-Z0-9])){0,38}\z/
+        guard name.wholeMatch(of: nameRegex) != nil,
+              scope.wholeMatch(of: scopeRegex) != nil
         else {
             throw Problem(
                 status: .badRequest,
@@ -27,7 +26,8 @@ struct PackageIdentifier: Hashable, Sendable, CustomStringConvertible {
     }
 
     init(_ identifier: String) throws {
-        guard let match = identifier.wholeMatch(of: Self.idRegex) else {
+        let idRegex = /\A([a-zA-Z0-9_-]+).([a-zA-Z0-9_-]+)\z/
+        guard let match = identifier.wholeMatch(of: idRegex) else {
             throw Problem(
                 status: .badRequest,
                 type: ProblemType.invalidPackageIdentifier.url,

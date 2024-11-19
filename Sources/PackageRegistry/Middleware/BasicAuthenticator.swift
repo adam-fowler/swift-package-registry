@@ -12,9 +12,9 @@
 //
 //===----------------------------------------------------------------------===//
 
-import Bcrypt
 import Hummingbird
 import HummingbirdAuth
+import HummingbirdBcrypt
 import NIOPosix
 
 struct BasicAuthenticator<Repository: UserRepository>: AuthenticatorMiddleware {

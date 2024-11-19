@@ -5,10 +5,10 @@ import NIOCore
 
 struct PackageRegistryRequestContext: AuthRequestContext, RequestContext {
     var coreContext: CoreRequestContextStorage
-    var auth: HummingbirdAuth.LoginCache
+    var identity: User?
 
     init(source: Source) {
         self.coreContext = .init(source: source)
-        self.auth = .init()
+        self.identity = nil
     }
 }

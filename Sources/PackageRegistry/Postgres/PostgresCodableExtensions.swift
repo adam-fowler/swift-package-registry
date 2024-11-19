@@ -9,7 +9,7 @@ extension PackageRelease: PostgresCodable {
 }
 
 extension PackageIdentifier: PostgresCodable {
-    static var psqlType: PostgresDataType = .text
+    static var psqlType: PostgresDataType { .text }
     static var psqlFormat: PostgresFormat { .text }
 
     func encode(
@@ -35,7 +35,7 @@ extension PackageIdentifier: PostgresCodable {
 }
 
 extension PackageStatus: PostgresCodable {
-    static var psqlType: PostgresDataType = .null
+    nonisolated(unsafe) static var psqlType: PostgresDataType = .null
     static var psqlFormat: PostgresFormat { .text }
 
     static func setDataType(client: PostgresClient, logger: Logger) async throws {
@@ -74,7 +74,7 @@ extension PackageStatus: PostgresCodable {
     }
 }
 
-extension UInt32: PostgresDecodable {
+extension UInt32: @retroactive PostgresDecodable {
     @inlinable
     public init(
         from buffer: inout ByteBuffer,

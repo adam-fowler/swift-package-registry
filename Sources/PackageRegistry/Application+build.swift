@@ -1,16 +1,18 @@
 import Hummingbird
+import HummingbirdBasicAuth
 import HummingbirdCore
 import HummingbirdPostgres
 import HummingbirdTLS
 import Logging
 import NIOSSL
+import PostgresMigrations
 import PostgresNIO
 
 /// Application arguments protocol. We use a protocol so we can call
 /// `HBApplication.configure` inside Tests as well as in the App executable.
 /// Any variables added here also have to be added to `App` in App.swift and
 /// `TestArguments` in AppTest.swift
-public protocol AppArguments {
+public protocol AppArguments: Sendable {
     var hostname: String { get }
     var port: Int { get }
     var inMemory: Bool { get }
@@ -36,14 +38,14 @@ public func buildApplication(_ args: some AppArguments) async throws -> any Appl
     let storage = FileStorage(rootFolder: "registry")
 
     let postgresClient: PostgresClient?
-    let postgresMigrations: PostgresMigrations?
+    let postgresMigrations: DatabaseMigrations?
     let registryRoutes: RouteCollection<PackageRegistryRequestContext>
     if !args.inMemory {
         let client = PostgresClient(
             configuration: .init(host: "localhost", username: "spruser", password: "user", database: "swiftpackageregistry", tls: .disable),
             backgroundLogger: logger
         )
-        let migrations = PostgresMigrations()
+        let migrations = DatabaseMigrations()
         await migrations.add(CreatePackageRelease())
         await migrations.add(CreateURLPackageReference())
         await migrations.add(CreateManifest())

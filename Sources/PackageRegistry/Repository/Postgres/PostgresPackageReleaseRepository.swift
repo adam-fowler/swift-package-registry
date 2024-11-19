@@ -7,7 +7,6 @@ struct PostgresPackageReleaseRepository: PackageReleaseRepository {
     }
 
     let client: PostgresClient
-    static var statusDataType: PostgresDataType!
 
     func add(_ package: PackageRelease, logger: Logger) async throws -> Bool {
         let releaseID = package.releaseID.id

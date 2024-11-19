@@ -14,8 +14,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/hummingbird-project/hummingbird.git",
       "state" : {
-        "revision" : "39362b4df11483d5dd1bc2843998f5b6ddac3c9a",
-        "version" : "2.0.0-rc.5"
+        "revision" : "8af1c9060e16be16fba1ced7322200c1761a3931",
+        "version" : "2.4.0"
       }
     },
     {
@@ -23,8 +23,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/hummingbird-project/hummingbird-auth.git",
       "state" : {
-        "revision" : "d067ace99d9e1ced500010fe9ae1a77883351819",
-        "version" : "2.0.0-rc.1"
+        "revision" : "8d03d8886eb04f894f98184672ba5257ce379bf8",
+        "version" : "2.0.0"
       }
     },
     {
@@ -32,8 +32,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/hummingbird-project/hummingbird-postgres.git",
       "state" : {
-        "revision" : "3e4aae5b5de3d429f121523dc9cd28f3a02b8aeb",
-        "version" : "0.3.0"
+        "revision" : "08fcd81a0d6d3f3cbe61f003835ffad7f000f2f9",
+        "version" : "0.5.1"
       }
     },
     {
@@ -41,8 +41,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/vapor/multipart-kit.git",
       "state" : {
-        "revision" : "a31236f24bfd2ea2f520a74575881f6731d7ae68",
-        "version" : "4.7.0"
+        "branch" : "v5",
+        "revision" : "eabe1333a7feb7da7a285cc4fcbc33d1bb6bbe4e"
       }
     },
     {
@@ -77,8 +77,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/apple/swift-async-algorithms.git",
       "state" : {
-        "revision" : "da4e36f86544cdf733a40d59b3a2267e3a7bbf36",
-        "version" : "1.0.0"
+        "revision" : "5c8bd186f48c16af0775972700626f0b74588278",
+        "version" : "1.0.2"
       }
     },
     {
@@ -131,17 +131,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/apple/swift-http-types.git",
       "state" : {
-        "revision" : "9bee2fdb79cc740081abd8ebd80738063d632286",
-        "version" : "1.1.0"
-      }
-    },
-    {
-      "identity" : "swift-jobs",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/hummingbird-project/swift-jobs.git",
-      "state" : {
-        "revision" : "954a963c39193ceeb25ecdd3777959a1e544ff7b",
-        "version" : "1.0.0-beta.3"
+        "revision" : "ef18d829e8b92d731ad27bb81583edd2094d1ce3",
+        "version" : "1.3.1"
       }
     },
     {
@@ -158,8 +149,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/apple/swift-metrics.git",
       "state" : {
-        "revision" : "ce594e71e92a1610015017f83f402894df540e51",
-        "version" : "2.4.4"
+        "revision" : "e0165b53d49b413dd987526b641e05e246782685",
+        "version" : "2.5.0"
       }
     },
     {

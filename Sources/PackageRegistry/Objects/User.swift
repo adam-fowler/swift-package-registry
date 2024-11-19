@@ -2,7 +2,7 @@ import Foundation
 import HummingbirdAuth
 
 /// Basic user details
-struct User: Authenticatable {
+struct User: Sendable {
     let id: UUID
     let username: String
     let passwordHash: String

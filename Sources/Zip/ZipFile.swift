@@ -24,11 +24,11 @@ public struct ZipFile {
     let file: unzFile
 }
 
-public struct ZipFilePosition {
+public struct ZipFilePosition: Sendable {
     let position: unz64_file_pos
 }
 
-public struct ZipFileDesc {
+public struct ZipFileDesc: Sendable {
     public let filename: String
     public let position: ZipFilePosition
 

@@ -1,7 +1,8 @@
 import PostgresNIO
 import HummingbirdPostgres
+import PostgresMigrations
 
-struct CreateManifest: PostgresMigration {
+struct CreateManifest: DatabaseMigration {
     func apply(connection: PostgresConnection, logger: Logger) async throws {
         try await connection.query(
             """

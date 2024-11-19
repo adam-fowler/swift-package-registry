@@ -49,7 +49,7 @@ struct PackageRegistryController<PackageReleasesRepo: PackageReleaseRepository, 
     }
 
     @Sendable func login(_ request: Request, context: Context) async throws -> HTTPResponse.Status {
-        guard context.auth.has(User.self) else { throw HTTPError(.unauthorized) }
+        _ = try context.requireIdentity()
         return .ok
     }
 
@@ -196,7 +196,7 @@ struct PackageRegistryController<PackageReleasesRepo: PackageReleaseRepository, 
 
     /// Create a package release
     @Sendable func createRelease(_ request: Request, context: Context) async throws -> Response {
-        guard context.auth.has(User.self) else { throw HTTPError(.unauthorized) }
+        _ = try context.requireIdentity()
         /* if request.headers[.expect] == "100-continue" {
              throw Problem(
                  status: .expectationFailed,
@@ -220,7 +220,7 @@ struct PackageRegistryController<PackageReleasesRepo: PackageReleaseRepository, 
             )
         }
         let body = try await request.body.collect(upTo: .max)
-        let createRequest = try FormDataDecoder().decode(CreateReleaseRequest.self, from: body, boundary: parameter.value)
+        let createRequest = try FormDataDecoder().decode(CreateReleaseRequest.self, from: body.readableBytesView, boundary: parameter.value)
         let id = try PackageIdentifier(scope: scope, name: name)
         // verify package release hasn't been published already
         guard try await self.packageRepository.get(id: id, version: version, logger: context.logger) == nil else {
@@ -279,6 +279,17 @@ struct PackageRegistryController<PackageReleasesRepo: PackageReleaseRepository, 
 
     /// Extract manifests from zip file
     func extractManifestsFromZipFile(_ filename: String) async throws -> Manifests? {
+        let packageSwiftRegex = Regex {
+            "/package"
+            Optionally {
+                "@swift-"
+                Capture {
+                    OneOrMore(.anyOf("0123456789."))
+                }
+            }
+            ".swift"
+        }.ignoresCase()
+
         do {
             let zipFileManager = ZipFileManager()
             return try await zipFileManager.withZipFile(filename) { zip -> Manifests? in
@@ -314,17 +325,6 @@ struct PackageRegistryController<PackageReleasesRepo: PackageReleaseRepository, 
         }
     }
 }
-
-private let packageSwiftRegex = Regex {
-    "/package"
-    Optionally {
-        "@swift-"
-        Capture {
-            OneOrMore(.anyOf("0123456789."))
-        }
-    }
-    ".swift"
-}.ignoresCase()
 
 extension AsyncSequence {
     // Collect contents of AsyncSequence into Array
