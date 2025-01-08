@@ -20,7 +20,7 @@ public struct ZipError: Error {
     public static var unzipFail: Self { self.init(.unzipFail) }
 }
 
-public struct ZipFile {
+public struct ZipFile: @unchecked Sendable {
     let file: unzFile
 }
 
@@ -45,11 +45,13 @@ public struct ZipFileManager: Sendable {
         self.threadPool = threadPool
     }
 
-    public func withZipFile<Value>(_ path: String, process: (ZipFile) async throws -> Value) async throws -> Value {
+    public func withZipFile<Value>(_ path: String, process: (ZipFile) async throws -> Value)
+        async throws -> Value
+    {
         guard let zip = try await self.open(path) else { throw ZipError.fileNotFound }
         let value: Value
         do {
-            value = try await process(ZipFile(file: zip))
+            value = try await process(zip)
         } catch {
             try await self.close(zip)
             throw error
@@ -59,12 +61,14 @@ public struct ZipFileManager: Sendable {
     }
 
     public func contents(of zip: ZipFile) -> ZipFileContentsAsyncSequence {
-        return .init(manager: self, zip: zip.file)
+        return .init(manager: self, zip: zip)
     }
 
-    public func loadFile(_ zipFile: ZipFile, at filePosition: ZipFilePosition) async throws -> ByteBuffer {
-        let zip = zipFile.file
+    public func loadFile(_ zipFile: ZipFile, at filePosition: ZipFilePosition) async throws
+        -> ByteBuffer
+    {
         return try await self.threadPool.runIfActive {
+            let zip = zipFile.file
             var fp = filePosition.position
             guard unzGoToFilePos64(zip, &fp) == UNZ_OK else { throw ZipError.unzipFail }
             guard unzOpenCurrentFile(zip) == UNZ_OK else { throw ZipError.unzipFail }
@@ -86,12 +90,12 @@ public struct ZipFileManager: Sendable {
         }
     }
 
-    private func open(_ path: String) async throws -> unzFile? {
-        try await self.threadPool.runIfActive { unzOpen(path) }
+    private func open(_ path: String) async throws -> ZipFile? {
+        try await self.threadPool.runIfActive { ZipFile(file: unzOpen(path)) }
     }
 
-    private func close(_ zipFile: unzFile) async throws {
-        _ = try await self.threadPool.runIfActive { unzClose(zipFile) }
+    private func close(_ zipFile: ZipFile) async throws {
+        _ = try await self.threadPool.runIfActive { unzClose(zipFile.file) }
     }
 }
 
@@ -100,15 +104,17 @@ public struct ZipFileContentsAsyncSequence: AsyncSequence {
     public typealias Element = ZipFileDesc
 
     let manager: ZipFileManager
-    let zip: unzFile
+    let zip: ZipFile
 
     public struct AsyncIterator: AsyncIteratorProtocol {
         var firstIteration = true
         let manager: ZipFileManager
-        let zip: unzFile
+        let zipFile: ZipFile
 
         public mutating func next() async throws -> Element? {
-            let element: Element? = try await self.manager.threadPool.runIfActive { [zip, firstIteration] in
+            let element: Element? = try await self.manager.threadPool.runIfActive {
+                [zipFile, firstIteration] () -> Element? in
+                let zip = zipFile.file
                 if firstIteration {
                     if unzGoToFirstFile(zip) != UNZ_OK {
                         throw ZipError.unzipFail
@@ -124,12 +130,15 @@ public struct ZipFileContentsAsyncSequence: AsyncSequence {
                 // get file name
                 var fileInfo = unz_file_info64()
                 memset(&fileInfo, 0, MemoryLayout<unz_file_info64>.size)
-                guard unzGetCurrentFileInfo64(zip, &fileInfo, nil, 0, nil, 0, nil, 0) == UNZ_OK else {
+                guard unzGetCurrentFileInfo64(zip, &fileInfo, nil, 0, nil, 0, nil, 0) == UNZ_OK
+                else {
                     throw ZipError.unzipFail
                 }
                 let filenameSize: Int = numericCast(fileInfo.size_filename)
-                let filenameBuffer = UnsafeMutablePointer<CChar>.allocate(capacity: filenameSize + 1)
-                unzGetCurrentFileInfo64(zip, nil, filenameBuffer, fileInfo.size_filename, nil, 0, nil, 0)
+                let filenameBuffer = UnsafeMutablePointer<CChar>.allocate(
+                    capacity: filenameSize + 1)
+                unzGetCurrentFileInfo64(
+                    zip, nil, filenameBuffer, fileInfo.size_filename, nil, 0, nil, 0)
                 filenameBuffer[filenameSize] = 0
                 let filename = String(cString: filenameBuffer)
 
@@ -147,8 +156,6 @@ public struct ZipFileContentsAsyncSequence: AsyncSequence {
     }
 
     public func makeAsyncIterator() -> AsyncIterator {
-        return .init(manager: self.manager, zip: self.zip)
+        return .init(manager: self.manager, zipFile: self.zip)
     }
 }
-
-extension unzFile: @unchecked Sendable {}
