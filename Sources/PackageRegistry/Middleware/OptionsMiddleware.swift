@@ -18,7 +18,7 @@ struct OptionsMiddleware<Context: RequestContext>: RouterMiddleware {
                 status: .ok,
                 headers: [
                     .allow: "GET, PUT",
-                    .link: String(decoding: StructuredFieldValueEncoder().encode(linkHeader), as: UTF8.self),
+                    .link: StructuredFieldValueEncoder().encodeAsString(linkHeader),
                 ]
             )
         }

@@ -66,9 +66,7 @@ struct PackageRegistryController<PackageReleasesRepo: PackageReleaseRepository, 
             let linkHeader = LinkHeader(items: [
                 .init(item: "<\(self.urlRoot)\(scope)/\(name)/\(latestRelease.version)>", parameters: ["rel": "latest-version"])
             ])
-            try headers[values: .link].append(
-                String(decoding: StructuredFieldValueEncoder().encode(linkHeader), as: UTF8.self)
-            )
+            try headers[values: .link].append(StructuredFieldValueEncoder().encodeAsString(linkHeader))
         }
         return .init(
             headers: headers,
@@ -121,7 +119,7 @@ struct PackageRegistryController<PackageReleasesRepo: PackageReleaseRepository, 
             }
         }
         let headers: HTTPFields = [
-            .link: String(decoding: try StructuredFieldValueEncoder().encode(linkHeader), as: UTF8.self)
+            .link: try StructuredFieldValueEncoder().encodeAsString(linkHeader)
         ]
         return .init(headers: headers, response: release)
     }
@@ -174,7 +172,7 @@ struct PackageRegistryController<PackageReleasesRepo: PackageReleaseRepository, 
             .cacheControl: "public, immutable",
         ]
         if linkHeader.items.count > 0 {
-            headers[.link] = try String(decoding: StructuredFieldValueEncoder().encode(linkHeader), as: UTF8.self)
+            headers[.link] = try StructuredFieldValueEncoder().encodeAsString(linkHeader)
         }
         return .init(status: .ok, headers: headers, body: .init(byteBuffer: manifest))
     }
@@ -273,7 +271,7 @@ struct PackageRegistryController<PackageReleasesRepo: PackageReleaseRepository, 
                 guard
                     let contentDisposition = try? StructuredFieldValueDecoder().decode(
                         MultipartContentDispostion.self,
-                        from: [UInt8](contentDispositionString.utf8)
+                        from: contentDispositionString
                     )
                 else { throw HTTPError(.badRequest) }
                 switch contentDisposition.parameters.name {
