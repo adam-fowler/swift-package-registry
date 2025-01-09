@@ -1,13 +1,15 @@
 import Crypto
 import Foundation
+import NIOCore
+import NIOFoundationCompat
 
 /// Create release object
 ///
 /// refer to: https://github.com/apple/swift-package-manager/blob/main/Documentation/PackageRegistry/Registry.md#46-create-a-package-release
 struct CreateReleaseRequest: Codable {
-    let sourceArchive: Data
+    let sourceArchive: ByteBuffer
     let sourceArchiveSignature: String?
-    let metadata: Data?
+    let metadata: ByteBuffer?
     let metadataSignature: String?
 
     private enum CodingKeys: String, CodingKey {
@@ -21,7 +23,7 @@ struct CreateReleaseRequest: Codable {
         let resource = PackageRelease.Resource(
             name: "source-archive",
             type: "application/zip",
-            checksum: SHA256.hash(data: self.sourceArchive).hexDigest(),
+            checksum: SHA256.hash(data: Data(buffer: self.sourceArchive, byteTransferStrategy: .noCopy)).hexDigest(),
             signing: sourceArchiveSignature.map {
                 .init(signatureBase64Encoded: $0, signatureFormat: "cms-1.0.0")
             }
@@ -54,9 +56,9 @@ struct CreateReleaseRequest: Codable {
     }
 }
 
-public extension Sequence<UInt8> {
+extension Sequence<UInt8> {
     /// return a hexEncoded string buffer from an array of bytes
-    func hexDigest() -> String {
-        return self.map { String(format: "%02x", $0) }.joined(separator: "")
+    public func hexDigest() -> String {
+        self.map { String(format: "%02x", $0) }.joined(separator: "")
     }
 }

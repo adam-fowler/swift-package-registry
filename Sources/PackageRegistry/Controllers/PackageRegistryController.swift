@@ -3,14 +3,8 @@ import HTTPTypes
 import Hummingbird
 import MultipartKit
 import RegexBuilder
+import StructuredFieldValues
 import Zip
-
-extension HTTPField.Name {
-    static var link: Self { .init("Link")! }
-    static var digest: Self { .init("Digest")! }
-    static var swiftPMSignature: Self { .init("X-Swift-Package-Signature")! }
-    static var swiftPMSignatureFormat: Self { .init("X-Swift-Package-Signature-Format")! }
-}
 
 struct PackageRegistryController<PackageReleasesRepo: PackageReleaseRepository, ManifestsRepo: ManifestRepository> {
     typealias Context = PackageRegistryRequestContext
@@ -34,18 +28,8 @@ struct PackageRegistryController<PackageReleasesRepo: PackageReleaseRepository, 
         routes.group()
             .add(middleware: basicAuthenticator)
             .put("/{scope}/{name}/{version}", use: self.createRelease)
-        routes.on("**", method: .options, use: self.options)
+        //routes.on("**", method: .options, use: self.options)
         return routes
-    }
-
-    @Sendable func options(_: Request, context _: Context) throws -> Response {
-        return .init(
-            status: .ok,
-            headers: [
-                .allow: "GET, PUT",
-                .link: "<https://github.com/apple/swift-package-manager/blob/main/Documentation/PackageRegistry/Registry.md>; rel=\"service-doc\",<https://github.com/apple/swift-package-manager/blob/main/Documentation/PackageRegistry/registry.openapi.yaml>; rel=\"service-desc\"",
-            ]
-        )
     }
 
     @Sendable func login(_ request: Request, context: Context) async throws -> HTTPResponse.Status {
@@ -54,7 +38,10 @@ struct PackageRegistryController<PackageReleasesRepo: PackageReleaseRepository, 
     }
 
     /// List package releases
-    @Sendable func list(_ request: Request, context: Context) async throws -> EditedResponse<ListReleaseResponse> {
+    @Sendable func list(
+        _ request: Request,
+        context: Context
+    ) async throws -> EditedResponse<ListReleaseResponse> {
         let scope = try context.parameters.require("scope")
         let name = try context.parameters.require("name")
         let id = try PackageIdentifier(scope: scope, name: name)
@@ -76,7 +63,12 @@ struct PackageRegistryController<PackageReleasesRepo: PackageReleaseRepository, 
         let response = ListReleaseResponse(releases: .init(releasesResponse) { first, _ in first })
         var headers: HTTPFields = .init()
         if let latestRelease = releases.max(by: { $0.version < $1.version }) {
-            headers[values: .link].append("<\(self.urlRoot)\(scope)/\(name)/\(latestRelease.version)>; rel=\"latest-version\"")
+            let linkHeader = LinkHeader(items: [
+                .init(item: "<\(self.urlRoot)\(scope)/\(name)/\(latestRelease.version)>", parameters: ["rel": "latest-version"])
+            ])
+            try headers[values: .link].append(
+                String(decoding: StructuredFieldValueEncoder().encode(linkHeader), as: UTF8.self)
+            )
         }
         return .init(
             headers: headers,
@@ -85,34 +77,52 @@ struct PackageRegistryController<PackageReleasesRepo: PackageReleaseRepository, 
     }
 
     /// Fetch metadata for a package release
-    @Sendable func getMetadata(_ request: Request, context: Context) async throws -> EditedResponse<PackageRelease> {
+    @Sendable func getMetadata(
+        _ request: Request,
+        context: Context
+    ) async throws -> EditedResponse<PackageRelease> {
         let scope = try context.parameters.require("scope")
         let name = try context.parameters.require("name")
         let version = try context.parameters.require("version", as: Version.self)
         let id = try PackageIdentifier(scope: scope, name: name)
-        guard let release = try await packageRepository.get(id: id, version: version, logger: context.logger) else {
+        guard
+            let release = try await packageRepository.get(
+                id: id,
+                version: version,
+                logger: context.logger
+            )
+        else {
             throw HTTPError(.notFound)
         }
         let releases = try await packageRepository.list(id: id, logger: context.logger)
         let sortedReleases = releases.sorted { $0.version < $1.version }
 
         // Construct Link header
-        var headers: HTTPFields = .init()
+        var linkHeader = LinkHeader(items: [])
         if let latestRelease = sortedReleases.last {
-            headers[values: .link].append("<\(self.urlRoot)\(scope)/\(name)/\(latestRelease.version)>; rel=\"latest-version\"")
+            linkHeader.items.append(
+                .init(item: "<\(self.urlRoot)\(scope)/\(name)/\(latestRelease.version)>", parameters: ["rel": "latest-version"])
+            )
         }
         if let index = sortedReleases.firstIndex(where: { $0.version == version }) {
             if index != sortedReleases.startIndex {
                 let prevIndex = sortedReleases.index(before: index)
                 let prevVersion = sortedReleases[prevIndex].version
-                headers[values: .link].append("<\(self.urlRoot)\(scope)/\(name)/\(prevVersion)>; rel=\"predecessor-version\"")
+                linkHeader.items.append(
+                    .init(item: "<\(self.urlRoot)\(scope)/\(name)/\(prevVersion)>", parameters: ["rel": "predecessor-version"])
+                )
             }
             let nextIndex = sortedReleases.index(after: index)
             if nextIndex != sortedReleases.endIndex {
                 let nextVersion = sortedReleases[nextIndex].version
-                headers[values: .link].append("<\(self.urlRoot)\(scope)/\(name)/\(nextVersion)>; rel=\"successor-version\"")
+                linkHeader.items.append(
+                    .init(item: "<\(self.urlRoot)\(scope)/\(name)/\(nextVersion)>", parameters: ["rel": "successor-version"])
+                )
             }
         }
+        let headers: HTTPFields = [
+            .link: String(decoding: try StructuredFieldValueEncoder().encode(linkHeader), as: UTF8.self)
+        ]
         return .init(headers: headers, response: release)
     }
 
@@ -124,7 +134,12 @@ struct PackageRegistryController<PackageReleasesRepo: PackageReleaseRepository, 
         let swiftVersion = request.uri.queryParameters.get("swift-version")
 
         let id = try PackageIdentifier(scope: scope, name: name)
-        guard let manifests = try await self.manifestRepository.get(.init(packageId: id, version: version), logger: context.logger) else {
+        guard
+            let manifests = try await self.manifestRepository.get(
+                .init(packageId: id, version: version),
+                logger: context.logger
+            )
+        else {
             return .init(status: .notFound)
         }
         let manifest: ByteBuffer
@@ -136,12 +151,31 @@ struct PackageRegistryController<PackageReleasesRepo: PackageReleaseRepository, 
         } else {
             manifest = manifests.default
         }
-        let filename = if let manifestVersion { "Package@swift-\(manifestVersion).swift" } else { "Package.swift" }
-        var headers: HTTPFields = .init()
-        headers[values: .link] = manifests.versions.map { "<\(self.urlRoot)\(scope)/\(name)/\(version)/Package.swift?swift-version=\($0.swiftVersion)>; rel=\"alternate\"; filename=\"Package@swift-\($0.swiftVersion).swift\"; swift-tools-version=\"\($0.swiftVersion)\"" }
-        headers[.contentType] = "text/x-swift"
-        headers[.contentDisposition] = "attachment; filename=\"\(filename)\""
-        headers[.cacheControl] = "public, immutable"
+        let filename =
+            if let manifestVersion { "Package@swift-\(manifestVersion).swift" } else {
+                "Package.swift"
+            }
+        let linkHeader = LinkHeader(
+            items:
+                manifests.versions.map {
+                    .init(
+                        item: "<\(self.urlRoot)\(scope)/\(name)/\(version)/Package.swift?swift-version=\($0.swiftVersion)>",
+                        parameters: [
+                            "rel": "alternate",
+                            "filename": "Package@swift-\($0.swiftVersion).swift",
+                            "swift-tools-version": "\($0.swiftVersion)",
+                        ]
+                    )
+                }
+        )
+        var headers: HTTPFields = [
+            .contentType: "text/x-swift",
+            .contentDisposition: "attachment; filename=\"\(filename)\"",
+            .cacheControl: "public, immutable",
+        ]
+        if linkHeader.items.count > 0 {
+            headers[.link] = try String(decoding: StructuredFieldValueEncoder().encode(linkHeader), as: UTF8.self)
+        }
         return .init(status: .ok, headers: headers, body: .init(byteBuffer: manifest))
     }
 
@@ -154,7 +188,11 @@ struct PackageRegistryController<PackageReleasesRepo: PackageReleaseRepository, 
 
         // get metadata
         let id = try PackageIdentifier(scope: scope, name: name)
-        let release = try await self.packageRepository.get(id: id, version: version, logger: context.logger)
+        let release = try await self.packageRepository.get(
+            id: id,
+            version: version,
+            logger: context.logger
+        )
 
         guard let release else {
             throw HTTPError(.notFound)
@@ -208,10 +246,10 @@ struct PackageRegistryController<PackageReleasesRepo: PackageReleaseRepository, 
         let name = try context.parameters.require("name")
         let version = try context.parameters.require("version", as: Version.self)
         guard let contentType = request.headers[.contentType],
-              let mediaType = MediaType(from: contentType),
-              case .multipartForm = mediaType,
-              let parameter = mediaType.parameter,
-              parameter.name == "boundary"
+            let mediaType = MediaType(from: contentType),
+            case .multipartForm = mediaType,
+            let parameter = mediaType.parameter,
+            parameter.name == "boundary"
         else {
             throw Problem(
                 status: .badRequest,
@@ -219,11 +257,59 @@ struct PackageRegistryController<PackageReleasesRepo: PackageReleaseRepository, 
                 detail: "invalid content type"
             )
         }
-        let body = try await request.body.collect(upTo: .max)
-        let createRequest = try FormDataDecoder().decode(CreateReleaseRequest.self, from: body.readableBytesView, boundary: parameter.value)
+        let multipartStream = StreamingMultipartParserAsyncSequence(boundary: parameter.value, buffer: request.body.map { $0.readableBytesView })
+        var iterator = multipartStream.makeAsyncIterator()
+        guard case .boundary = try await iterator.next() else { throw HTTPError(.badRequest) }
+
+        var sourceArchive: ByteBuffer?
+        var sourceArchiveSignature: String?
+        var metadata: ByteBuffer?
+        var metadataSignature: String?
+
+        loop: while true {
+            switch try await iterator.next() {
+            case .headerFields(let headers):
+                guard let contentDispositionString = headers[values: .contentDisposition].first else { throw HTTPError(.badRequest) }
+                guard
+                    let contentDisposition = try? StructuredFieldValueDecoder().decode(
+                        MultipartContentDispostion.self,
+                        from: [UInt8](contentDispositionString.utf8)
+                    )
+                else { throw HTTPError(.badRequest) }
+                switch contentDisposition.parameters.name {
+                case "source-archive":
+                    let sourceArchivePart = try await iterator.nextCollatedPart()
+                    guard case .bodyChunk(let bufferView) = sourceArchivePart else { throw HTTPError(.badRequest) }
+                    sourceArchive = ByteBuffer(bufferView)
+                case "metadata":
+                    guard let metaDataPart = try await iterator.nextCollatedPart() else { throw HTTPError(.badRequest) }
+                    guard case .bodyChunk(let bufferView) = metaDataPart else { throw HTTPError(.badRequest) }
+                    metadata = ByteBuffer(bufferView)
+                default:
+                    throw HTTPError(.badRequest, message: "Unexpected part in multipart file")
+                }
+
+            case .bodyChunk:
+                throw HTTPError(.badRequest, message: "Unexpected body chunk")
+
+            case .boundary:
+                break
+
+            case .none:
+                break loop
+            }
+        }
+        guard let sourceArchive else { throw HTTPError(.badRequest, message: "No source-archive part") }
+        let createRequest = CreateReleaseRequest(
+            sourceArchive: sourceArchive,
+            sourceArchiveSignature: sourceArchiveSignature,
+            metadata: metadata,
+            metadataSignature: metadataSignature
+        )
         let id = try PackageIdentifier(scope: scope, name: name)
         // verify package release hasn't been published already
-        guard try await self.packageRepository.get(id: id, version: version, logger: context.logger) == nil else {
+        guard try await self.packageRepository.get(id: id, version: version, logger: context.logger) == nil
+        else {
             throw Problem(
                 status: .conflict,
                 type: ProblemType.versionAlreadyExists.url,
@@ -255,9 +341,15 @@ struct PackageRegistryController<PackageReleasesRepo: PackageReleaseRepository, 
         let folder = "\(scope).\(name)"
         let filename = "\(scope).\(name)/\(version).zip"
         try await storage.makeDirectory(folder, context: context)
-        try await self.storage.writeFile(filename, buffer: ByteBuffer(data: createRequest.sourceArchive), context: context)
+        try await self.storage.writeFile(
+            filename,
+            buffer: createRequest.sourceArchive,
+            context: context
+        )
         // process zip file and extract package.swift
-        let manifests = try await self.extractManifestsFromZipFile(self.storage.rootFolder + filename)
+        let manifests = try await self.extractManifestsFromZipFile(
+            self.storage.rootFolder + filename
+        )
         guard let manifests else {
             throw Problem(
                 status: .unprocessableContent,
@@ -273,7 +365,11 @@ struct PackageRegistryController<PackageReleasesRepo: PackageReleaseRepository, 
             )
         }
         // save manifests
-        try await self.manifestRepository.add(.init(packageId: id, version: version), manifests: manifests, logger: context.logger)
+        try await self.manifestRepository.add(
+            .init(packageId: id, version: version),
+            manifests: manifests,
+            logger: context.logger
+        )
         return .init(status: .created)
     }
 
@@ -294,9 +390,12 @@ struct PackageRegistryController<PackageReleasesRepo: PackageReleaseRepository, 
             let zipFileManager = ZipFileManager()
             return try await zipFileManager.withZipFile(filename) { zip -> Manifests? in
                 let contents = zipFileManager.contents(of: zip)
-                let packageSwiftFiles = try await contents.compactMap { file -> (filename: String, position: ZipFilePosition)? in
+                let packageSwiftFiles = try await contents.compactMap {
+                    file -> (filename: String, position: ZipFilePosition)? in
                     let filename = file.filename
-                    guard let firstSlash = filename.firstIndex(where: { $0 == "/" }) else { return nil }
+                    guard let firstSlash = filename.firstIndex(where: { $0 == "/" }) else {
+                        return nil
+                    }
                     let filename2 = filename[firstSlash...].lowercased()
                     if filename2 == "/package.swift" || filename2.hasPrefix("/package@swift-") {
                         return (filename: filename2, position: file.position)
@@ -312,7 +411,9 @@ struct PackageRegistryController<PackageReleasesRepo: PackageReleaseRepository, 
                     } else if let v = file.filename.wholeMatch(of: packageSwiftRegex)?.output.1 {
                         let version = String(v)
                         let fileContents = try await zipFileManager.loadFile(zip, at: file.position)
-                        manifestVersions.append(.init(manifest: fileContents, swiftVersion: version))
+                        manifestVersions.append(
+                            .init(manifest: fileContents, swiftVersion: version)
+                        )
                     } else {
                         continue
                     }

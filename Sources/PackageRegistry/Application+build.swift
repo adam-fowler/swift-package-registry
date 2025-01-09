@@ -77,11 +77,12 @@ public func buildApplication(_ args: some AppArguments) async throws -> any Appl
         postgresMigrations = nil
     }
 
+    router.add(middleware: OptionsMiddleware())
     router.group("registry").addRoutes(registryRoutes)
 
     var app: Application<RouterResponder<PackageRegistryRequestContext>>
     if let tlsCertificateChain = env.get("server_certificate_chain"),
-       let tlsPrivateKey = env.get("server_private_key")
+        let tlsPrivateKey = env.get("server_private_key")
     {
         let tlsConfiguration = try getTLSConfiguration(certificateChain: tlsCertificateChain, privateKey: tlsPrivateKey)
         app = try Application(
@@ -123,7 +124,7 @@ public func buildApplication(_ args: some AppArguments) async throws -> any Appl
 }
 
 func getTLSConfiguration(certificateChain: String, privateKey: String) throws -> TLSConfiguration {
-    let certificateChain = try NIOSSLCertificate(bytes: [UInt8](certificateChain.utf8), format: .pem) // .fromPEMFile(certificateChain)
+    let certificateChain = try NIOSSLCertificate(bytes: [UInt8](certificateChain.utf8), format: .pem)  // .fromPEMFile(certificateChain)
     let privateKey = try NIOSSLPrivateKey(bytes: [UInt8](privateKey.utf8), format: .pem)
     return TLSConfiguration.makeServerConfiguration(
         certificateChain: [.certificate(certificateChain)],

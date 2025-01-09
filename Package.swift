@@ -13,10 +13,11 @@ let package = Package(
         .package(url: "https://github.com/apple/swift-algorithms.git", from: "1.0.0"),
         .package(url: "https://github.com/apple/swift-crypto.git", from: "3.0.0"),
         .package(url: "https://github.com/apple/swift-nio.git", from: "2.63.0"),
+        .package(url: "https://github.com/apple/swift-http-structured-headers", branch: "main"),
         .package(url: "https://github.com/hummingbird-project/hummingbird.git", from: "2.0.0"),
         .package(url: "https://github.com/hummingbird-project/hummingbird-auth.git", from: "2.0.0"),
         .package(url: "https://github.com/hummingbird-project/hummingbird-postgres.git", from: "0.5.0"),
-        .package(url: "https://github.com/vapor/multipart-kit.git", branch: "v5"),
+        .package(url: "https://github.com/vapor/multipart-kit.git", branch: "main"),
         .package(url: "https://github.com/vapor/postgres-nio.git", from: "1.21.0"),
     ],
     targets: [
@@ -35,15 +36,19 @@ let package = Package(
                 .product(name: "HummingbirdTLS", package: "hummingbird"),
                 .product(name: "MultipartKit", package: "multipart-kit"),
                 .product(name: "PostgresNIO", package: "postgres-nio"),
+                .product(name: "StructuredFieldValues", package: "swift-http-structured-headers"),
                 .byName(name: "Zip"),
             ],
             swiftSettings: swiftSettings
         ),
         .target(name: "CMinizip", linkerSettings: [.linkedLibrary("z")]),
-        .target(name: "Zip", dependencies: [
-            "CMinizip",
-            .product(name: "NIOPosix", package: "swift-nio"),
-        ]),
+        .target(
+            name: "Zip",
+            dependencies: [
+                "CMinizip",
+                .product(name: "NIOPosix", package: "swift-nio"),
+            ]
+        ),
         .testTarget(
             name: "PackageRegistryTests",
             dependencies: [
