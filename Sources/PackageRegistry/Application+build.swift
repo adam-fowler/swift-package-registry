@@ -3,6 +3,7 @@ import HummingbirdBasicAuth
 import HummingbirdCore
 import HummingbirdPostgres
 import HummingbirdTLS
+import JobsPostgres
 import Logging
 import NIOSSL
 import PostgresMigrations

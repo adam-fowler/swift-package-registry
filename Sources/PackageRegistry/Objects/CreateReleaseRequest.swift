@@ -1,4 +1,3 @@
-import Crypto
 import Foundation
 import NIOCore
 import NIOFoundationCompat
@@ -6,24 +5,29 @@ import NIOFoundationCompat
 /// Create release object
 ///
 /// refer to: https://github.com/apple/swift-package-manager/blob/main/Documentation/PackageRegistry/Registry.md#46-create-a-package-release
-struct CreateReleaseRequest: Codable {
-    let sourceArchive: ByteBuffer
+struct CreateReleaseRequest {
+    let sourceArchiveDigest: String
     let sourceArchiveSignature: String?
     let metadata: ByteBuffer?
     let metadataSignature: String?
 
-    private enum CodingKeys: String, CodingKey {
-        case sourceArchive = "source-archive"
-        case sourceArchiveSignature = "source-archive-signature"
-        case metadata
-        case metadataSignature = "metadata-signature"
+    internal init(
+        sourceArchiveDigest: String,
+        sourceArchiveSignature: String? = nil,
+        metadata: ByteBuffer? = nil,
+        metadataSignature: String? = nil
+    ) {
+        self.sourceArchiveDigest = sourceArchiveDigest
+        self.sourceArchiveSignature = sourceArchiveSignature
+        self.metadata = metadata
+        self.metadataSignature = metadataSignature
     }
 
     func createRelease(id: PackageIdentifier, version: Version) throws -> PackageRelease {
         let resource = PackageRelease.Resource(
             name: "source-archive",
             type: "application/zip",
-            checksum: SHA256.hash(data: Data(buffer: self.sourceArchive, byteTransferStrategy: .noCopy)).hexDigest(),
+            checksum: self.sourceArchiveDigest,
             signing: sourceArchiveSignature.map {
                 .init(signatureBase64Encoded: $0, signatureFormat: "cms-1.0.0")
             }

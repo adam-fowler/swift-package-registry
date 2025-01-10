@@ -1,3 +1,4 @@
+import Crypto
 import Foundation
 import HTTPTypes
 import Hummingbird
@@ -196,7 +197,7 @@ struct PackageRegistryController<PackageReleasesRepo: PackageReleaseRepository, 
             throw HTTPError(.notFound)
         }
         let responseBody = ResponseBody { writer in
-            try await self.storage.readFile(filename, context: context) { buffer in
+            try await self.storage.readFile(filename) { buffer in
                 try await writer.write(buffer)
             }
             try await writer.finish(nil)
@@ -270,11 +271,15 @@ struct PackageRegistryController<PackageReleasesRepo: PackageReleaseRepository, 
                 detail: "a release with version \(version) already exists"
             )
         }
+
+        let folder = "\(id)"
+        let filename = "\(id)/\(version).zip"
+
         let multipartStream = StreamingMultipartParserAsyncSequence(boundary: parameter.value, buffer: request.body.map { $0.readableBytesView })
         var iterator = multipartStream.makeAsyncIterator()
         guard case .boundary = try await iterator.next() else { throw HTTPError(.badRequest) }
 
-        var sourceArchive: ByteBuffer?
+        var sourceArchiveDigest: SHA256Digest?
         var sourceArchiveSignature: String?
         var metadata: ByteBuffer?
         var metadataSignature: String?
@@ -291,9 +296,14 @@ struct PackageRegistryController<PackageReleasesRepo: PackageReleaseRepository, 
                 else { throw HTTPError(.badRequest) }
                 switch contentDisposition.parameters.name {
                 case "source-archive":
-                    let sourceArchivePart = try await iterator.nextCollatedPart()
-                    guard case .bodyChunk(let bufferView) = sourceArchivePart else { throw HTTPError(.badRequest) }
-                    sourceArchive = ByteBuffer(bufferView)
+                    try await storage.makeDirectory(folder)
+                    let multipartBodyAsyncSequence = MultipartBodyAsyncSequence(multipartIterator: iterator)
+                    let sha256CalculatingAsyncSequence = ProcessingAsyncSequence(multipartBodyAsyncSequence, state: SHA256()) { buffer, sha256 in
+                        sha256.update(data: buffer.readableBytesView)
+                    }
+                    try await self.storage.writeFile(filename, contents: sha256CalculatingAsyncSequence)
+                    sourceArchiveDigest = sha256CalculatingAsyncSequence.state.finalize()
+                    iterator = multipartBodyAsyncSequence.multipartIterator
                 case "metadata":
                     guard let metaDataPart = try await iterator.nextCollatedPart() else { throw HTTPError(.badRequest) }
                     guard case .bodyChunk(let bufferView) = metaDataPart else { throw HTTPError(.badRequest) }
@@ -320,9 +330,9 @@ struct PackageRegistryController<PackageReleasesRepo: PackageReleaseRepository, 
                 break loop
             }
         }
-        guard let sourceArchive else { throw HTTPError(.badRequest, message: "No source-archive part") }
+        guard let sourceArchiveDigest else { throw HTTPError(.badRequest, message: "No source-archive part") }
         let createRequest = CreateReleaseRequest(
-            sourceArchive: sourceArchive,
+            sourceArchiveDigest: sourceArchiveDigest.hexDigest(),
             sourceArchiveSignature: sourceArchiveSignature,
             metadata: metadata,
             metadataSignature: metadataSignature
@@ -348,15 +358,7 @@ struct PackageRegistryController<PackageReleasesRepo: PackageReleaseRepository, 
                 )
             }
         }
-        // save release zip
-        let folder = "\(scope).\(name)"
-        let filename = "\(scope).\(name)/\(version).zip"
-        try await storage.makeDirectory(folder, context: context)
-        try await self.storage.writeFile(
-            filename,
-            buffer: createRequest.sourceArchive,
-            context: context
-        )
+
         // process zip file and extract package.swift
         let manifests = try await self.extractManifestsFromZipFile(
             self.storage.rootFolder + filename

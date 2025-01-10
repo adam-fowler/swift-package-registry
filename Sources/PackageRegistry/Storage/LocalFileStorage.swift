@@ -13,8 +13,7 @@ struct LocalFileStorage: Storage {
 
     func writeFile<AS: AsyncSequence>(
         _ filename: String,
-        contents: AS,
-        context: some RequestContext
+        contents: AS
     ) async throws where AS.Element == ByteBuffer {
         let fullFilename = self.rootFolder + filename.dropPrefix("/")
         try await self.fileSystem.withFileHandle(
@@ -29,8 +28,7 @@ struct LocalFileStorage: Storage {
 
     func writeFile(
         _ filename: String,
-        buffer: ByteBuffer,
-        context: some RequestContext
+        buffer: ByteBuffer
     ) async throws {
         let fullFilename = self.rootFolder + filename.dropPrefix("/")
         try await self.fileSystem.withFileHandle(
@@ -42,8 +40,7 @@ struct LocalFileStorage: Storage {
     }
 
     func makeDirectory(
-        _ path: String,
-        context: some RequestContext
+        _ path: String
     ) async throws {
         let fullPath = self.rootFolder + path.dropPrefix("/")
         do {
@@ -55,7 +52,6 @@ struct LocalFileStorage: Storage {
 
     func readFile(
         _ filename: String,
-        context: some RequestContext,
         process: (ByteBuffer) async throws -> Void
     ) async throws {
         let fullFilename = self.rootFolder + filename.dropPrefix("/")
