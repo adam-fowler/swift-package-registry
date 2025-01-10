@@ -38,7 +38,7 @@ writePackageMetadata()
         ORG_JSON=""
     fi
 
-cat > "package-metadata.json" <<EOF
+cat > "$PACKAGE_METADATA_FILE" <<EOF
 {
     "author": {
         "name": $AUTHOR_NAME,
@@ -60,6 +60,9 @@ trap cleanup EXIT $?
 TEMP_DIR=$(mktemp -d)
 echo "Using temp folder $TEMP_DIR"
 
+REPO_DIR="$TEMP_DIR/repo"
+PACKAGE_METADATA_FILE="$TEMP_DIR/package-metadata.json"
+
 METADATA=$(gh api "https://api.github.com/repos/$NAME_WITH_OWNER")
 VERSION_METADATA=$(gh api "https://api.github.com/repos/$NAME_WITH_OWNER/releases/latest")
 OWNER_TYPE=$(echo $METADATA | jq -r '.owner.type')
@@ -73,14 +76,14 @@ VERSION=${2:-$LATEST_VERSION}
 
 echo "Cloning $NAME_WITH_OWNER ..."
 
-git clone --depth 1 --branch $VERSION https://github.com/$NAME_WITH_OWNER $TEMP_DIR &> /dev/null
+git clone --depth 1 --branch $VERSION https://github.com/$NAME_WITH_OWNER $REPO_DIR &> /dev/null
 
 if [ $? -ne 0 ]; then
     echo "$VERSION does not exist"
     exit
 fi 
 
-cd $TEMP_DIR
+cd $REPO_DIR
 
 writePackageMetadata
 
@@ -90,4 +93,4 @@ PACKAGE_ID="$OWNER_NAME.$PACKAGE_NAME"
 
 echo "Publishing $PACKAGE_ID v$VERSION ..."
 
-swift package-registry publish $PACKAGE_ID $VERSION
+swift package-registry publish --metadata-path "$PACKAGE_METADATA_FILE" $PACKAGE_ID $VERSION
