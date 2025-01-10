@@ -47,7 +47,7 @@ cat > "package-metadata.json" <<EOF
         "url": $AUTHOR_URL$ORG_JSON
     },
     "description": $DESCRIPTION,
-    "respositoryURLs": [
+    "repositoryURLs": [
         $CLONE_URL,
         $SSH_URL
     ]
