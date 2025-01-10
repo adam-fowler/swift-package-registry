@@ -9,7 +9,7 @@ import Zip
 struct PackageRegistryController<PackageReleasesRepo: PackageReleaseRepository, ManifestsRepo: ManifestRepository> {
     typealias Context = PackageRegistryRequestContext
 
-    let storage: FileStorage
+    let storage: LocalFileStorage
     let packageRepository: PackageReleasesRepo
     let manifestRepository: ManifestsRepo
     let urlRoot: String
@@ -283,6 +283,14 @@ struct PackageRegistryController<PackageReleasesRepo: PackageReleaseRepository, 
                     guard let metaDataPart = try await iterator.nextCollatedPart() else { throw HTTPError(.badRequest) }
                     guard case .bodyChunk(let bufferView) = metaDataPart else { throw HTTPError(.badRequest) }
                     metadata = ByteBuffer(bufferView)
+                case "source-archive-signature":
+                    guard let metaDataPart = try await iterator.nextCollatedPart() else { throw HTTPError(.badRequest) }
+                    guard case .bodyChunk(let bufferView) = metaDataPart else { throw HTTPError(.badRequest) }
+                    sourceArchiveSignature = String(decoding: bufferView, as: UTF8.self)
+                case "metadata-signature":
+                    guard let metaDataPart = try await iterator.nextCollatedPart() else { throw HTTPError(.badRequest) }
+                    guard case .bodyChunk(let bufferView) = metaDataPart else { throw HTTPError(.badRequest) }
+                    metadataSignature = String(decoding: bufferView, as: UTF8.self)
                 default:
                     throw HTTPError(.badRequest, message: "Unexpected part in multipart file")
                 }

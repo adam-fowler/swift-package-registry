@@ -1,7 +1,7 @@
 import Hummingbird
 import NIOPosix
 
-struct FileStorage: Storage {
+struct LocalFileStorage: Storage {
     let rootFolder: String
     let fileIO = FileIO()
 

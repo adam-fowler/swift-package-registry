@@ -35,7 +35,7 @@ public func buildApplication(_ args: some AppArguments) async throws -> any Appl
     router.get("/health") { _, _ -> HTTPResponse.Status in
         .ok
     }
-    let storage = FileStorage(rootFolder: "registry")
+    let storage = LocalFileStorage(rootFolder: "registry")
 
     let postgresClient: PostgresClient?
     let postgresMigrations: DatabaseMigrations?
