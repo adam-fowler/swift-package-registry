@@ -46,7 +46,11 @@ struct LocalFileStorage: Storage {
         context: some RequestContext
     ) async throws {
         let fullPath = self.rootFolder + path.dropPrefix("/")
-        try await self.fileSystem.createDirectory(at: .init(fullPath), withIntermediateDirectories: true)
+        do {
+            try await self.fileSystem.createDirectory(at: .init(fullPath), withIntermediateDirectories: true)
+        } catch let error as FileSystemError where error.code == .fileAlreadyExists {
+            // don't throw error on directory that already exists
+        }
     }
 
     func readFile(
