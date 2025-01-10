@@ -1,12 +1,14 @@
 import Hummingbird
+import NIOFileSystem
 import NIOPosix
 
 struct LocalFileStorage: Storage {
     let rootFolder: String
-    let fileIO = FileIO()
+    let fileSystem: FileSystem
 
     init(rootFolder: String) {
         self.rootFolder = rootFolder.addSuffix("/")
+        self.fileSystem = .init(threadPool: .singleton)
     }
 
     func writeFile<AS: AsyncSequence>(
@@ -15,7 +17,14 @@ struct LocalFileStorage: Storage {
         context: some RequestContext
     ) async throws where AS.Element == ByteBuffer {
         let fullFilename = self.rootFolder + filename.dropPrefix("/")
-        try await self.fileIO.writeFile(contents: contents, path: fullFilename, context: context)
+        try await self.fileSystem.withFileHandle(
+            forWritingAt: .init(fullFilename),
+            options: .newFile(replaceExisting: true)
+        ) { fileHandle in
+            try await fileHandle.withBufferedWriter { writer in
+                _ = try await writer.write(contentsOf: contents)
+            }
+        }
     }
 
     func writeFile(
@@ -24,7 +33,12 @@ struct LocalFileStorage: Storage {
         context: some RequestContext
     ) async throws {
         let fullFilename = self.rootFolder + filename.dropPrefix("/")
-        try await self.fileIO.writeFile(buffer: buffer, path: fullFilename, context: context)
+        try await self.fileSystem.withFileHandle(
+            forWritingAt: .init(fullFilename),
+            options: .newFile(replaceExisting: true)
+        ) { fileHandle in
+            _ = try await fileHandle.write(contentsOf: buffer, toAbsoluteOffset: 0)
+        }
     }
 
     func makeDirectory(
@@ -32,15 +46,19 @@ struct LocalFileStorage: Storage {
         context: some RequestContext
     ) async throws {
         let fullPath = self.rootFolder + path.dropPrefix("/")
-        let nonBlockingFileIO = NonBlockingFileIO(threadPool: .singleton)
-        try await nonBlockingFileIO.createDirectory(path: fullPath, withIntermediateDirectories: true, mode: S_IRWXU)
+        try await self.fileSystem.createDirectory(at: .init(fullPath), withIntermediateDirectories: true)
     }
 
     func readFile(
         _ filename: String,
-        context: some RequestContext
-    ) async throws -> ResponseBody {
+        context: some RequestContext,
+        process: (ByteBuffer) async throws -> Void
+    ) async throws {
         let fullFilename = self.rootFolder + filename.dropPrefix("/")
-        return try await self.fileIO.loadFile(path: fullFilename, context: context)
+        try await self.fileSystem.withFileHandle(forReadingAt: .init(fullFilename)) { fileHandle in
+            for try await chunk in fileHandle.readChunks() {
+                try await process(chunk)
+            }
+        }
     }
 }

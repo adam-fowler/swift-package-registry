@@ -1,6 +1,6 @@
 import Hummingbird
 
-protocol Storage {
+protocol Storage: Sendable {
     func writeFile<AS: AsyncSequence>(
         _ filename: String,
         contents: AS,
@@ -18,5 +18,9 @@ protocol Storage {
         context: some RequestContext
     ) async throws
 
-    func readFile(_ filename: String, context: some RequestContext) async throws -> ResponseBody
+    func readFile(
+        _ filename: String,
+        context: some RequestContext,
+        process: (ByteBuffer) async throws -> Void
+    ) async throws
 }

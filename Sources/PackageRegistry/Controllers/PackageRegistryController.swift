@@ -195,7 +195,12 @@ struct PackageRegistryController<PackageReleasesRepo: PackageReleaseRepository, 
         guard let release else {
             throw HTTPError(.notFound)
         }
-        let responseBody = try await self.storage.readFile(filename, context: context)
+        let responseBody = ResponseBody { writer in
+            try await self.storage.readFile(filename, context: context) { buffer in
+                try await writer.write(buffer)
+            }
+            try await writer.finish(nil)
+        }
         var headers: HTTPFields = [
             .contentType: MediaType.applicationZip.description,
             .contentDisposition: "attachment; filename=\"\(name)-\(version).zip\"",
@@ -255,6 +260,16 @@ struct PackageRegistryController<PackageReleasesRepo: PackageReleaseRepository, 
                 detail: "invalid content type"
             )
         }
+        let id = try PackageIdentifier(scope: scope, name: name)
+        // verify package release hasn't been published already
+        guard try await self.packageRepository.get(id: id, version: version, logger: context.logger) == nil
+        else {
+            throw Problem(
+                status: .conflict,
+                type: ProblemType.versionAlreadyExists.url,
+                detail: "a release with version \(version) already exists"
+            )
+        }
         let multipartStream = StreamingMultipartParserAsyncSequence(boundary: parameter.value, buffer: request.body.map { $0.readableBytesView })
         var iterator = multipartStream.makeAsyncIterator()
         guard case .boundary = try await iterator.next() else { throw HTTPError(.badRequest) }
@@ -312,16 +327,6 @@ struct PackageRegistryController<PackageReleasesRepo: PackageReleaseRepository, 
             metadata: metadata,
             metadataSignature: metadataSignature
         )
-        let id = try PackageIdentifier(scope: scope, name: name)
-        // verify package release hasn't been published already
-        guard try await self.packageRepository.get(id: id, version: version, logger: context.logger) == nil
-        else {
-            throw Problem(
-                status: .conflict,
-                type: ProblemType.versionAlreadyExists.url,
-                detail: "a release with version \(version) already exists"
-            )
-        }
         let packageRelease = try createRequest.createRelease(id: id, version: version)
         // verify digest
         if let digest = request.headers[.digest] {
