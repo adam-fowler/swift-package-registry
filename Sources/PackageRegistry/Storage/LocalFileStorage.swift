@@ -2,7 +2,7 @@ import Hummingbird
 import NIOFileSystem
 import NIOPosix
 
-struct LocalFileStorage: Storage {
+struct LocalFileStorage: FileStorage {
     let rootFolder: String
     let fileSystem: FileSystem
 

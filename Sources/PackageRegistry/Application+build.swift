@@ -32,17 +32,11 @@ public func buildApplication(_ args: some AppArguments) async throws -> any Appl
         logger.logLevel = .debug
         return logger
     }()
-    let router = Router(context: PackageRegistryRequestContext.self, options: .autoGenerateHeadEndpoints)
-    router.add(middleware: LogRequestsMiddleware(.debug))
-    router.add(middleware: ProblemMiddleware())
-    router.get("/health") { _, _ -> HTTPResponse.Status in
-        .ok
-    }
-    let storage = LocalFileStorage(rootFolder: "registry")
+    let fileStorage = LocalFileStorage(rootFolder: "registry")
 
+    let router: Router<PackageRegistryRequestContext>
     var services: [any Service] = []
     var beforeServerStarts: (@Sendable () async throws -> Void)?
-    let registryRoutes: RouteCollection<PackageRegistryRequestContext>
     if !args.inMemory {
         let postgresClient = PostgresClient(
             configuration: .init(host: "localhost", username: "spruser", password: "user", database: "swiftpackageregistry", tls: .disable),
@@ -65,26 +59,29 @@ public func buildApplication(_ args: some AppArguments) async throws -> any Appl
             numWorkers: 1,
             logger: logger
         )
+
         let keyValueStore = await PostgresPersistDriver(client: postgresClient, migrations: migrations, logger: logger)
         let userRepository = PostgresUserRepository(client: postgresClient)
         let packageRepository = PostgresPackageReleaseRepository(client: postgresClient)
         let manifestRepository = PostgresManifestRepository(client: postgresClient)
-        PublishJobController(
-            storage: storage,
-            packageRepository: packageRepository,
-            manifestRepository: manifestRepository,
-            publishStatusManager: .init(keyValueStore: keyValueStore)
-        ).registerJobs(jobQueue: jobQueue)
 
-        // Add package registry endpoints
-        registryRoutes = PackageRegistryController(
-            storage: storage,
-            packageRepository: packageRepository,
-            manifestRepository: manifestRepository,
-            urlRoot: "https://\(serverAddress)/registry/",
+        router = buildRouter(
+            serverAddress: serverAddress,
+            keyValueStore: keyValueStore,
             jobQueue: jobQueue,
-            publishStatusManager: .init(keyValueStore: keyValueStore)
-        ).routes(basicAuthenticator: BasicAuthenticator(repository: userRepository))
+            fileStorage: fileStorage,
+            userRepository: userRepository,
+            packageRepository: packageRepository,
+            manifestRepository: manifestRepository
+        )
+
+        registerJobs(
+            jobQueue: jobQueue,
+            keyValueStore: keyValueStore,
+            fileStorage: fileStorage,
+            packageRepository: packageRepository,
+            manifestRepository: manifestRepository
+        )
 
         services.append(postgresClient)
         services.append(jobQueue)
@@ -113,29 +110,27 @@ public func buildApplication(_ args: some AppArguments) async throws -> any Appl
         let packageRepository = MemoryPackageReleaseRepository()
         let manifestRepository = MemoryManifestRepository()
 
-        PublishJobController(
-            storage: storage,
-            packageRepository: packageRepository,
-            manifestRepository: manifestRepository,
-            publishStatusManager: .init(keyValueStore: keyValueStore)
-        ).registerJobs(jobQueue: jobQueue)
-
-        // Add package registry endpoints
-        registryRoutes = PackageRegistryController(
-            storage: storage,
-            packageRepository: packageRepository,
-            manifestRepository: manifestRepository,
-            urlRoot: "https://\(serverAddress)/registry/",
+        router = buildRouter(
+            serverAddress: serverAddress,
+            keyValueStore: keyValueStore,
             jobQueue: jobQueue,
-            publishStatusManager: .init(keyValueStore: keyValueStore)
-        ).routes(basicAuthenticator: BasicAuthenticator(repository: userRepository))
+            fileStorage: fileStorage,
+            userRepository: userRepository,
+            packageRepository: packageRepository,
+            manifestRepository: manifestRepository
+        )
+
+        registerJobs(
+            jobQueue: jobQueue,
+            keyValueStore: keyValueStore,
+            fileStorage: fileStorage,
+            packageRepository: packageRepository,
+            manifestRepository: manifestRepository
+        )
 
         services.append(jobQueue)
         services.append(keyValueStore)
     }
-
-    router.add(middleware: OptionsMiddleware())
-    router.group("registry").addRoutes(registryRoutes)
 
     var app: Application<RouterResponder<PackageRegistryRequestContext>>
     if let tlsCertificateChain = env.get("server_certificate_chain"),
@@ -177,4 +172,50 @@ func getTLSConfiguration(certificateChain: String, privateKey: String) throws ->
         certificateChain: [.certificate(certificateChain)],
         privateKey: .privateKey(privateKey)
     )
+}
+
+func buildRouter(
+    serverAddress: String,
+    keyValueStore: some PersistDriver,
+    jobQueue: JobQueue<some JobQueueDriver>,
+    fileStorage: LocalFileStorage,
+    userRepository: some UserRepository,
+    packageRepository: some PackageReleaseRepository,
+    manifestRepository: some ManifestRepository
+) -> Router<PackageRegistryRequestContext> {
+    let router = Router(context: PackageRegistryRequestContext.self, options: .autoGenerateHeadEndpoints)
+    router.add(middleware: LogRequestsMiddleware(.debug))
+    router.add(middleware: ProblemMiddleware())
+    router.add(middleware: OptionsMiddleware())
+    router.get("/health") { _, _ -> HTTPResponse.Status in
+        .ok
+    }
+    router.group("registry")
+        .addRoutes(
+            PackageRegistryController(
+                storage: fileStorage,
+                packageRepository: packageRepository,
+                manifestRepository: manifestRepository,
+                urlRoot: "https://\(serverAddress)/registry/",
+                jobQueue: jobQueue,
+                publishStatusManager: .init(keyValueStore: keyValueStore)
+            ).routes(basicAuthenticator: BasicAuthenticator(repository: userRepository))
+        )
+
+    return router
+}
+
+func registerJobs(
+    jobQueue: JobQueue<some JobQueueDriver>,
+    keyValueStore: some PersistDriver,
+    fileStorage: LocalFileStorage,
+    packageRepository: some PackageReleaseRepository,
+    manifestRepository: some ManifestRepository
+) {
+    PublishJobController(
+        storage: fileStorage,
+        packageRepository: packageRepository,
+        manifestRepository: manifestRepository,
+        publishStatusManager: .init(keyValueStore: keyValueStore)
+    ).registerJobs(jobQueue: jobQueue)
 }
