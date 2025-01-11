@@ -32,6 +32,14 @@ public func buildApplication(_ args: some AppArguments) async throws -> any Appl
         logger.logLevel = .debug
         return logger
     }()
+
+    var tlsConfiguration: TLSConfiguration?
+    if let tlsCertificateChain = env.get("server_certificate_chain"),
+        let tlsPrivateKey = env.get("server_private_key")
+    {
+        tlsConfiguration = try getTLSConfiguration(certificateChain: tlsCertificateChain, privateKey: tlsPrivateKey)
+    }
+
     let fileStorage = LocalFileStorage(rootFolder: "registry")
 
     let router: Router<PackageRegistryRequestContext>
@@ -39,7 +47,7 @@ public func buildApplication(_ args: some AppArguments) async throws -> any Appl
     var beforeServerStarts: (@Sendable () async throws -> Void)?
     if !args.inMemory {
         let postgresClient = PostgresClient(
-            configuration: .init(host: "localhost", username: "spruser", password: "user", database: "swiftpackageregistry", tls: .disable),
+            configuration: .init(host: "localhost", username: "spruser", password: "spruser", database: "swiftpackageregistry", tls: .disable),
             backgroundLogger: logger
         )
         let migrations = DatabaseMigrations()
@@ -66,6 +74,7 @@ public func buildApplication(_ args: some AppArguments) async throws -> any Appl
         let manifestRepository = PostgresManifestRepository(client: postgresClient)
 
         router = buildRouter(
+            https: tlsConfiguration != nil,
             serverAddress: serverAddress,
             keyValueStore: keyValueStore,
             jobQueue: jobQueue,
@@ -111,6 +120,7 @@ public func buildApplication(_ args: some AppArguments) async throws -> any Appl
         let manifestRepository = MemoryManifestRepository()
 
         router = buildRouter(
+            https: tlsConfiguration != nil,
             serverAddress: serverAddress,
             keyValueStore: keyValueStore,
             jobQueue: jobQueue,
@@ -133,10 +143,7 @@ public func buildApplication(_ args: some AppArguments) async throws -> any Appl
     }
 
     var app: Application<RouterResponder<PackageRegistryRequestContext>>
-    if let tlsCertificateChain = env.get("server_certificate_chain"),
-        let tlsPrivateKey = env.get("server_private_key")
-    {
-        let tlsConfiguration = try getTLSConfiguration(certificateChain: tlsCertificateChain, privateKey: tlsPrivateKey)
+    if let tlsConfiguration {
         app = try Application(
             router: router,
             server: .tls(tlsConfiguration: tlsConfiguration),
@@ -175,6 +182,7 @@ func getTLSConfiguration(certificateChain: String, privateKey: String) throws ->
 }
 
 func buildRouter(
+    https: Bool,
     serverAddress: String,
     keyValueStore: some PersistDriver,
     jobQueue: JobQueue<some JobQueueDriver>,
@@ -190,17 +198,31 @@ func buildRouter(
     router.get("/health") { _, _ -> HTTPResponse.Status in
         .ok
     }
-    router.group("registry")
-        .addRoutes(
-            PackageRegistryController(
-                storage: fileStorage,
-                packageRepository: packageRepository,
-                manifestRepository: manifestRepository,
-                urlRoot: "https://\(serverAddress)/registry/",
-                jobQueue: jobQueue,
-                publishStatusManager: .init(keyValueStore: keyValueStore)
-            ).routes(basicAuthenticator: BasicAuthenticator(repository: userRepository))
-        )
+    if https {
+        router.group("registry")
+            .addRoutes(
+                PackageRegistryController(
+                    storage: fileStorage,
+                    packageRepository: packageRepository,
+                    manifestRepository: manifestRepository,
+                    urlRoot: "https://\(serverAddress)/registry/",
+                    jobQueue: jobQueue,
+                    publishStatusManager: .init(keyValueStore: keyValueStore)
+                ).routes(basicAuthenticator: BasicAuthenticator(repository: userRepository))
+            )
+    } else {
+        router.group("registry")
+            .addRoutes(
+                PackageRegistryController(
+                    storage: fileStorage,
+                    packageRepository: packageRepository,
+                    manifestRepository: manifestRepository,
+                    urlRoot: "http://\(serverAddress)/registry/",
+                    jobQueue: jobQueue,
+                    publishStatusManager: .init(keyValueStore: keyValueStore)
+                ).routes()
+            )
+    }
 
     return router
 }

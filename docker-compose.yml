@@ -6,7 +6,7 @@ services:
     volumes:
       - db:/var/lib/postgresql/hummingbird
     environment:
-      - POSTGRES_PASSWORD=user
+      - POSTGRES_PASSWORD=spruser
       - POSTGRES_USER=spruser
       - POSTGRES_DB=swiftpackageregistry
 

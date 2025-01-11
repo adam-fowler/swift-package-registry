@@ -24,6 +24,7 @@ struct PackageRegistryController<
     let jobQueue: JobQueue<JQD>
     let publishStatusManager: PublishStatusManager<KeyValueStore>
 
+    // Routes with authentication
     func routes(basicAuthenticator: BasicAuthenticator<some UserRepository>) -> RouteCollection<Context> {
         let routes = RouteCollection(context: Context.self)
         routes.group()
@@ -39,7 +40,20 @@ struct PackageRegistryController<
         routes.group()
             .add(middleware: basicAuthenticator)
             .put("/{scope}/{name}/{version}", use: self.createRelease)
-        //routes.on("**", method: .options, use: self.options)
+        return routes
+    }
+
+    // Routes without authentication
+    func routes() -> RouteCollection<Context> {
+        let routes = RouteCollection(context: Context.self)
+        routes.add(middleware: VersionMiddleware(version: "1"))
+        routes.get("/submissions/{id}", use: self.createReleaseStatus)
+        routes.get("/{scope}/{name}", use: self.list)
+        routes.get("/{scope}/{name}/{version}.zip", use: self.download)
+        routes.get("/{scope}/{name}/{version}/Package.swift", use: self.getManifest)
+        routes.get("/identifiers", use: self.lookupIdentifiers)
+        routes.get("/{scope}/{name}/{version}", use: self.getMetadata)
+        routes.put("/{scope}/{name}/{version}", use: self.createRelease)
         return routes
     }
 
