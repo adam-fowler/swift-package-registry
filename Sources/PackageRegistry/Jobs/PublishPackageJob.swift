@@ -7,8 +7,8 @@ import NIOFoundationCompat
 import RegexBuilder
 import Zip
 
-struct PublishJob: JobParameters {
-    static var jobName: String { "PackageRegistry: Publish" }
+struct PublishPackageJob: JobParameters {
+    static var jobName: String { "PackageRegistry:Publish" }
 
     let id: PackageIdentifier
     let publishRequestID: String
@@ -27,14 +27,8 @@ struct PublishJobController<PackageReleasesRepo: PackageReleaseRepository, Manif
     let publishStatusManager: PublishStatusManager<KeyValueStore>
 
     func registerJobs(jobQueue: JobQueue<some JobQueueDriver>) {
-        jobQueue.registerJob(parameters: PublishJob.self) { (parameters: PublishJob, context: JobContext) -> Void in
-            let createRequest = CreateReleaseRequest(
-                sourceArchiveDigest: parameters.sourceArchiveDigest,
-                sourceArchiveSignature: parameters.sourceArchiveSignature,
-                metadata: parameters.metadata,
-                metadataSignature: parameters.metadataSignature
-            )
-            let packageRelease = try createRequest.createRelease(id: parameters.id, version: parameters.version)
+        jobQueue.registerJob(parameters: PublishPackageJob.self) { parameters, context in
+            let packageRelease = try self.createRelease(parameters: parameters)
 
             // process zip file and extract package.swift
             let manifests = try await self.extractManifestsFromZipFile(
@@ -78,6 +72,36 @@ struct PublishJobController<PackageReleasesRepo: PackageReleaseRepository, Manif
                 status: .success("\(parameters.id.scope)/\(parameters.id.name)/\(parameters.version)")
             )
         }
+    }
+
+    func createRelease(parameters: PublishPackageJob) throws -> PackageRelease {
+        let resource = PackageRelease.Resource(
+            name: "source-archive",
+            type: "application/zip",
+            checksum: parameters.sourceArchiveDigest,
+            signing: parameters.sourceArchiveSignature.map {
+                .init(signatureBase64Encoded: $0, signatureFormat: "cms-1.0.0")
+            }
+        )
+        guard let metadata = parameters.metadata else {
+            throw Problem(status: .unprocessableContent, detail: "Release metadata is required to publish release.")
+        }
+        var packageMetadata: PackageMetadata
+        do {
+            packageMetadata = try JSONDecoder().decode(PackageMetadata.self, from: metadata)
+            if let repositoryURLs = packageMetadata.repositoryURLs {
+                packageMetadata.repositoryURLs = repositoryURLs.map { $0.standardizedGitURL() }
+            }
+        } catch {
+            throw Problem(status: .unprocessableContent, detail: "invalid JSON provided for release metadata.")
+        }
+        return .init(
+            id: parameters.id,
+            version: parameters.version,
+            resources: [resource],
+            metadata: packageMetadata,
+            publishedAt: Date.now.formatted(.iso8601)
+        )
     }
 
     /// Extract manifests from zip file
@@ -131,5 +155,21 @@ struct PublishJobController<PackageReleasesRepo: PackageReleaseRepository, Manif
         } catch {
             throw Problem(status: .internalServerError, detail: "\(error)")
         }
+    }
+}
+
+extension AsyncSequence {
+    // Collect contents of AsyncSequence into Array
+    func collect(maxElements: Int) async throws -> [Element] {
+        var count = 0
+        var array: [Element] = []
+        for try await element in self {
+            if count >= maxElements {
+                break
+            }
+            array.append(element)
+            count += 1
+        }
+        return array
     }
 }
