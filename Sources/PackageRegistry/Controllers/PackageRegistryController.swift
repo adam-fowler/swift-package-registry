@@ -2,18 +2,27 @@ import Crypto
 import Foundation
 import HTTPTypes
 import Hummingbird
+import Jobs
 import MultipartKit
+import NIOFoundationCompat
 import RegexBuilder
 import StructuredFieldValues
 import Zip
 
-struct PackageRegistryController<PackageReleasesRepo: PackageReleaseRepository, ManifestsRepo: ManifestRepository> {
+struct PackageRegistryController<
+    PackageReleasesRepo: PackageReleaseRepository,
+    ManifestsRepo: ManifestRepository,
+    JQD: JobQueueDriver,
+    KeyValueStore: PersistDriver
+> {
     typealias Context = PackageRegistryRequestContext
 
     let storage: LocalFileStorage
     let packageRepository: PackageReleasesRepo
     let manifestRepository: ManifestsRepo
     let urlRoot: String
+    let jobQueue: JobQueue<JQD>
+    let publishStatusManager: PublishStatusManager<KeyValueStore>
 
     func routes(basicAuthenticator: BasicAuthenticator<some UserRepository>) -> RouteCollection<Context> {
         let routes = RouteCollection(context: Context.self)
@@ -21,6 +30,7 @@ struct PackageRegistryController<PackageReleasesRepo: PackageReleaseRepository, 
             .add(middleware: basicAuthenticator)
             .post("/", use: self.login)
         routes.add(middleware: VersionMiddleware(version: "1"))
+        routes.get("/submissions/{id}", use: self.createReleaseSubmission)
         routes.get("/{scope}/{name}", use: self.list)
         routes.get("/{scope}/{name}/{version}.zip", use: self.download)
         routes.get("/{scope}/{name}/{version}/Package.swift", use: self.getManifest)
@@ -272,8 +282,8 @@ struct PackageRegistryController<PackageReleasesRepo: PackageReleaseRepository, 
             )
         }
 
-        let folder = "\(id)"
-        let filename = "\(id)/\(version).zip"
+        let sourceArchiveFolder = "\(id)"
+        let sourceArchiveFilename = "\(id)/\(version).zip"
 
         let multipartStream = StreamingMultipartParserAsyncSequence(boundary: parameter.value, buffer: request.body.map { $0.readableBytesView })
         var iterator = multipartStream.makeAsyncIterator()
@@ -296,12 +306,12 @@ struct PackageRegistryController<PackageReleasesRepo: PackageReleaseRepository, 
                 else { throw HTTPError(.badRequest) }
                 switch contentDisposition.parameters.name {
                 case "source-archive":
-                    try await storage.makeDirectory(folder)
+                    try await storage.makeDirectory(sourceArchiveFolder)
                     let multipartBodyAsyncSequence = MultipartBodyAsyncSequence(multipartIterator: iterator)
                     let sha256CalculatingAsyncSequence = ProcessingAsyncSequence(multipartBodyAsyncSequence, state: SHA256()) { buffer, sha256 in
                         sha256.update(data: buffer.readableBytesView)
                     }
-                    try await self.storage.writeFile(filename, contents: sha256CalculatingAsyncSequence)
+                    try await self.storage.writeFile(sourceArchiveFilename, contents: sha256CalculatingAsyncSequence)
                     sourceArchiveDigest = sha256CalculatingAsyncSequence.state.finalize()
                     iterator = multipartBodyAsyncSequence.multipartIterator
                 case "metadata":
@@ -331,7 +341,50 @@ struct PackageRegistryController<PackageReleasesRepo: PackageReleaseRepository, 
             }
         }
         guard let sourceArchiveDigest else { throw HTTPError(.badRequest, message: "No source-archive part") }
-        let createRequest = CreateReleaseRequest(
+        let sourceArchiveDigestHex = sourceArchiveDigest.hexDigest()
+        // verify digest
+        if let digest = request.headers[.digest] {
+            guard digest == "sha-256=\(sourceArchiveDigestHex)" else {
+                throw Problem(
+                    status: .badRequest,
+                    type: ProblemType.invalidDigest.url,
+                    detail: "invalid digest"
+                )
+            }
+        }
+        // if package has signing data then verify signature header
+        if sourceArchiveSignature != nil || metadataSignature != nil {
+            guard request.headers[.swiftPMSignatureFormat] == "cms-1.0.0" else {
+                throw Problem(
+                    status: .badRequest,
+                    type: ProblemType.invalidSignatureFormat.url,
+                    detail: "invalid signature format"
+                )
+            }
+        }
+
+        let requestId = UUID().uuidString
+        try await self.jobQueue.push(
+            PublishJob(
+                id: id,
+                publishRequestID: requestId,
+                version: version,
+                sourceArchiveFile: sourceArchiveFilename,
+                sourceArchiveDigest: sourceArchiveDigestHex,
+                sourceArchiveSignature: sourceArchiveSignature,
+                metadata: metadata.map { Data(buffer: $0, byteTransferStrategy: .noCopy) },
+                metadataSignature: metadataSignature
+            )
+        )
+        try await self.publishStatusManager.set(id: requestId, status: .inProgress)
+        return Response(
+            status: .accepted,
+            headers: [
+                .location: "\(self.urlRoot)submissions/\(requestId)",
+                .retryAfter: "5",
+            ]
+        )
+        /*let createRequest = CreateReleaseRequest(
             sourceArchiveDigest: sourceArchiveDigest.hexDigest(),
             sourceArchiveSignature: sourceArchiveSignature,
             metadata: metadata,
@@ -348,20 +401,9 @@ struct PackageRegistryController<PackageReleasesRepo: PackageReleaseRepository, 
                 )
             }
         }
-        // if package has signing data then verify signature header
-        if packageRelease.resources[0].signing != nil {
-            guard request.headers[.swiftPMSignatureFormat] == "cms-1.0.0" else {
-                throw Problem(
-                    status: .badRequest,
-                    type: ProblemType.invalidSignatureFormat.url,
-                    detail: "invalid signature format"
-                )
-            }
-        }
-
         // process zip file and extract package.swift
         let manifests = try await self.extractManifestsFromZipFile(
-            self.storage.rootFolder + filename
+            self.storage.rootFolder + sourceArchiveFilename
         )
         guard let manifests else {
             throw Problem(
@@ -383,7 +425,31 @@ struct PackageRegistryController<PackageReleasesRepo: PackageReleaseRepository, 
             manifests: manifests,
             logger: context.logger
         )
-        return .init(status: .created)
+        return .init(status: .created)*/
+    }
+
+    @Sendable func createReleaseSubmission(_ request: Request, context: Context) async throws -> Response {
+        let id = try context.parameters.require("id")
+        guard let status = try await self.publishStatusManager.get(id: id) else {
+            throw Problem(
+                status: .badRequest,
+                detail: "invalid package"
+            )
+        }
+        switch status {
+        case .inProgress:
+            return Response(status: .accepted, headers: [.retryAfter: "5"])
+
+        case .failed(let problem):
+            throw Problem(
+                status: .init(code: problem.status),
+                type: problem.url,
+                detail: problem.details
+            )
+
+        case .success(let address):
+            return .redirect(to: "\(self.urlRoot)\(address)", type: .permanent)
+        }
     }
 
     /// Extract manifests from zip file

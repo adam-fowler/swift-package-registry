@@ -12,8 +12,6 @@ struct PublishJob: JobParameters {
 
     let id: PackageIdentifier
     let publishRequestID: String
-    let requestDigest: String?
-    let requestSignatureFormat: String?
     let version: Version
     let sourceArchiveFile: String
     let sourceArchiveDigest: String
@@ -22,62 +20,30 @@ struct PublishJob: JobParameters {
     let metadataSignature: String?
 }
 
-struct JobController<PackageReleasesRepo: PackageReleaseRepository, ManifestsRepo: ManifestRepository, KeyValueStore: PersistDriver> {
+struct PublishJobController<PackageReleasesRepo: PackageReleaseRepository, ManifestsRepo: ManifestRepository, KeyValueStore: PersistDriver> {
     let storage: LocalFileStorage
     let packageRepository: PackageReleasesRepo
     let manifestRepository: ManifestsRepo
-    let keyValueStore: KeyValueStore
+    let publishStatusManager: PublishStatusManager<KeyValueStore>
 
     func registerJobs(jobQueue: JobQueue<some JobQueueDriver>) {
         jobQueue.registerJob(parameters: PublishJob.self) { (parameters: PublishJob, context: JobContext) -> Void in
-            let metadataByteBuffer = parameters.metadata.map { ByteBuffer(bytes: $0) }
             let createRequest = CreateReleaseRequest(
                 sourceArchiveDigest: parameters.sourceArchiveDigest,
                 sourceArchiveSignature: parameters.sourceArchiveSignature,
-                metadata: metadataByteBuffer,
+                metadata: parameters.metadata,
                 metadataSignature: parameters.metadataSignature
             )
             let packageRelease = try createRequest.createRelease(id: parameters.id, version: parameters.version)
-            // verify digest
-            if let digest = parameters.requestDigest {
-                guard digest == "sha-256=\(packageRelease.resources[0].checksum)" else {
-                    try await keyValueStore.set(
-                        key: parameters.publishRequestID,
-                        value: PublishStatus.failed(
-                            .init(
-                                status: 400,
-                                url: ProblemType.invalidDigest.url,
-                                details: "invalid digest"
-                            )
-                        )
-                    )
-                    return
-                }
-            }
-            // if package has signing data then verify signature header
-            if packageRelease.resources[0].signing != nil {
-                guard parameters.requestSignatureFormat == "cms-1.0.0" else {
-                    try await keyValueStore.set(
-                        key: parameters.publishRequestID,
-                        value: PublishStatus.failed(
-                            .init(
-                                status: 400,
-                                url: ProblemType.invalidSignatureFormat.url,
-                                details: "invalid signature format"
-                            )
-                        )
-                    )
-                    return
-                }
-            }
+
             // process zip file and extract package.swift
             let manifests = try await self.extractManifestsFromZipFile(
                 self.storage.rootFolder + parameters.sourceArchiveFile
             )
             guard let manifests else {
-                try await keyValueStore.set(
-                    key: parameters.publishRequestID,
-                    value: PublishStatus.failed(
+                try await publishStatusManager.set(
+                    id: parameters.publishRequestID,
+                    status: .failed(
                         .init(
                             status: HTTPResponse.Status.unprocessableContent.code,
                             details: "package doesn't contain a valid manifest (Package.swift) file"
@@ -88,9 +54,9 @@ struct JobController<PackageReleasesRepo: PackageReleaseRepository, ManifestsRep
             }
             // save release metadata
             guard try await self.packageRepository.add(packageRelease, logger: context.logger) else {
-                try await keyValueStore.set(
-                    key: parameters.publishRequestID,
-                    value: PublishStatus.failed(
+                try await publishStatusManager.set(
+                    id: parameters.publishRequestID,
+                    status: .failed(
                         .init(
                             status: HTTPResponse.Status.conflict.code,
                             url: ProblemType.versionAlreadyExists.url,
@@ -107,9 +73,9 @@ struct JobController<PackageReleasesRepo: PackageReleaseRepository, ManifestsRep
                 logger: context.logger
             )
             // set as successful
-            try await keyValueStore.set(
-                key: parameters.publishRequestID,
-                value: PublishStatus.success
+            try await publishStatusManager.set(
+                id: parameters.publishRequestID,
+                status: .success("\(parameters.id.scope)/\(parameters.id.name)/\(parameters.version)")
             )
         }
     }
@@ -166,21 +132,4 @@ struct JobController<PackageReleasesRepo: PackageReleaseRepository, ManifestsRep
             throw Problem(status: .internalServerError, detail: "\(error)")
         }
     }
-}
-
-enum PublishStatus: Codable {
-    struct Problem: Codable {
-        internal init(status: Int, url: String? = nil, details: String? = nil) {
-            self.status = status
-            self.url = url
-            self.details = details
-        }
-
-        let status: Int
-        let url: String?
-        let details: String?
-    }
-    case inProgress
-    case failed(Problem)
-    case success
 }

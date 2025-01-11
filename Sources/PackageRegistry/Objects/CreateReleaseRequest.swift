@@ -8,13 +8,13 @@ import NIOFoundationCompat
 struct CreateReleaseRequest {
     let sourceArchiveDigest: String
     let sourceArchiveSignature: String?
-    let metadata: ByteBuffer?
+    let metadata: Data?
     let metadataSignature: String?
 
     internal init(
         sourceArchiveDigest: String,
         sourceArchiveSignature: String? = nil,
-        metadata: ByteBuffer? = nil,
+        metadata: Data? = nil,
         metadataSignature: String? = nil
     ) {
         self.sourceArchiveDigest = sourceArchiveDigest
