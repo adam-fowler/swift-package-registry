@@ -1,18 +1,28 @@
+import Crypto
 import Foundation
 import HTTPTypes
 import Hummingbird
+import Jobs
 import MultipartKit
+import NIOFoundationCompat
 import RegexBuilder
 import StructuredFieldValues
 import Zip
 
-struct PackageRegistryController<PackageReleasesRepo: PackageReleaseRepository, ManifestsRepo: ManifestRepository> {
+struct PackageRegistryController<
+    PackageReleasesRepo: PackageReleaseRepository,
+    ManifestsRepo: ManifestRepository,
+    JQD: JobQueueDriver,
+    KeyValueStore: PersistDriver
+> {
     typealias Context = PackageRegistryRequestContext
 
     let storage: LocalFileStorage
     let packageRepository: PackageReleasesRepo
     let manifestRepository: ManifestsRepo
     let urlRoot: String
+    let jobQueue: JobQueue<JQD>
+    let publishStatusManager: PublishStatusManager<KeyValueStore>
 
     func routes(basicAuthenticator: BasicAuthenticator<some UserRepository>) -> RouteCollection<Context> {
         let routes = RouteCollection(context: Context.self)
@@ -20,6 +30,7 @@ struct PackageRegistryController<PackageReleasesRepo: PackageReleaseRepository, 
             .add(middleware: basicAuthenticator)
             .post("/", use: self.login)
         routes.add(middleware: VersionMiddleware(version: "1"))
+        routes.get("/submissions/{id}", use: self.createReleaseStatus)
         routes.get("/{scope}/{name}", use: self.list)
         routes.get("/{scope}/{name}/{version}.zip", use: self.download)
         routes.get("/{scope}/{name}/{version}/Package.swift", use: self.getManifest)
@@ -196,7 +207,7 @@ struct PackageRegistryController<PackageReleasesRepo: PackageReleaseRepository, 
             throw HTTPError(.notFound)
         }
         let responseBody = ResponseBody { writer in
-            try await self.storage.readFile(filename, context: context) { buffer in
+            try await self.storage.readFile(filename) { buffer in
                 try await writer.write(buffer)
             }
             try await writer.finish(nil)
@@ -270,11 +281,16 @@ struct PackageRegistryController<PackageReleasesRepo: PackageReleaseRepository, 
                 detail: "a release with version \(version) already exists"
             )
         }
+
+        let sourceArchiveFolder = "\(id)"
+        let sourceArchiveFilename = "\(id)/\(version).zip"
+
+        /// Parse multipart file, extracting metadata, saving source archive to disk
         let multipartStream = StreamingMultipartParserAsyncSequence(boundary: parameter.value, buffer: request.body.map { $0.readableBytesView })
         var iterator = multipartStream.makeAsyncIterator()
         guard case .boundary = try await iterator.next() else { throw HTTPError(.badRequest) }
 
-        var sourceArchive: ByteBuffer?
+        var sourceArchiveDigest: SHA256Digest?
         var sourceArchiveSignature: String?
         var metadata: ByteBuffer?
         var metadataSignature: String?
@@ -291,9 +307,14 @@ struct PackageRegistryController<PackageReleasesRepo: PackageReleaseRepository, 
                 else { throw HTTPError(.badRequest) }
                 switch contentDisposition.parameters.name {
                 case "source-archive":
-                    let sourceArchivePart = try await iterator.nextCollatedPart()
-                    guard case .bodyChunk(let bufferView) = sourceArchivePart else { throw HTTPError(.badRequest) }
-                    sourceArchive = ByteBuffer(bufferView)
+                    try await storage.makeDirectory(sourceArchiveFolder)
+                    let multipartBodyAsyncSequence = MultipartBodyAsyncSequence(multipartIterator: iterator)
+                    let sha256CalculatingAsyncSequence = ProcessingAsyncSequence(multipartBodyAsyncSequence, state: SHA256()) { buffer, sha256 in
+                        sha256.update(data: buffer.readableBytesView)
+                    }
+                    try await self.storage.writeFile(sourceArchiveFilename, contents: sha256CalculatingAsyncSequence)
+                    sourceArchiveDigest = sha256CalculatingAsyncSequence.state.finalize()
+                    iterator = multipartBodyAsyncSequence.multipartIterator
                 case "metadata":
                     guard let metaDataPart = try await iterator.nextCollatedPart() else { throw HTTPError(.badRequest) }
                     guard case .bodyChunk(let bufferView) = metaDataPart else { throw HTTPError(.badRequest) }
@@ -320,17 +341,12 @@ struct PackageRegistryController<PackageReleasesRepo: PackageReleaseRepository, 
                 break loop
             }
         }
-        guard let sourceArchive else { throw HTTPError(.badRequest, message: "No source-archive part") }
-        let createRequest = CreateReleaseRequest(
-            sourceArchive: sourceArchive,
-            sourceArchiveSignature: sourceArchiveSignature,
-            metadata: metadata,
-            metadataSignature: metadataSignature
-        )
-        let packageRelease = try createRequest.createRelease(id: id, version: version)
+        guard let sourceArchiveDigest else { throw HTTPError(.badRequest, message: "No source-archive part") }
+        let sourceArchiveDigestHex = sourceArchiveDigest.hexDigest()
+
         // verify digest
         if let digest = request.headers[.digest] {
-            guard digest == "sha-256=\(packageRelease.resources[0].checksum)" else {
+            guard digest == "sha-256=\(sourceArchiveDigestHex)" else {
                 throw Problem(
                     status: .badRequest,
                     type: ProblemType.invalidDigest.url,
@@ -339,7 +355,7 @@ struct PackageRegistryController<PackageReleasesRepo: PackageReleaseRepository, 
             }
         }
         // if package has signing data then verify signature header
-        if packageRelease.resources[0].signing != nil {
+        if sourceArchiveSignature != nil || metadataSignature != nil {
             guard request.headers[.swiftPMSignatureFormat] == "cms-1.0.0" else {
                 throw Problem(
                     status: .badRequest,
@@ -348,108 +364,53 @@ struct PackageRegistryController<PackageReleasesRepo: PackageReleaseRepository, 
                 )
             }
         }
-        // save release zip
-        let folder = "\(scope).\(name)"
-        let filename = "\(scope).\(name)/\(version).zip"
-        try await storage.makeDirectory(folder, context: context)
-        try await self.storage.writeFile(
-            filename,
-            buffer: createRequest.sourceArchive,
-            context: context
-        )
-        // process zip file and extract package.swift
-        let manifests = try await self.extractManifestsFromZipFile(
-            self.storage.rootFolder + filename
-        )
-        guard let manifests else {
-            throw Problem(
-                status: .unprocessableContent,
-                detail: "package doesn't contain a valid manifest (Package.swift) file"
+
+        // push publish release job
+        let requestId = UUID().uuidString
+        try await self.jobQueue.push(
+            PublishPackageJob(
+                id: id,
+                publishRequestID: requestId,
+                version: version,
+                sourceArchiveFile: sourceArchiveFilename,
+                sourceArchiveDigest: sourceArchiveDigestHex,
+                sourceArchiveSignature: sourceArchiveSignature,
+                metadata: metadata.map { Data(buffer: $0, byteTransferStrategy: .noCopy) },
+                metadataSignature: metadataSignature
             )
-        }
-        // save release metadata
-        guard try await self.packageRepository.add(packageRelease, logger: context.logger) else {
-            throw Problem(
-                status: .conflict,
-                type: ProblemType.versionAlreadyExists.url,
-                detail: "a release with version \(version) already exists"
-            )
-        }
-        // save manifests
-        try await self.manifestRepository.add(
-            .init(packageId: id, version: version),
-            manifests: manifests,
-            logger: context.logger
         )
-        return .init(status: .created)
+        try await self.publishStatusManager.set(id: requestId, status: .inProgress)
+        return Response(
+            status: .accepted,
+            headers: [
+                .location: "\(self.urlRoot)submissions/\(requestId)",
+                .retryAfter: "5",
+            ]
+        )
     }
 
-    /// Extract manifests from zip file
-    func extractManifestsFromZipFile(_ filename: String) async throws -> Manifests? {
-        let packageSwiftRegex = Regex {
-            "/package"
-            Optionally {
-                "@swift-"
-                Capture {
-                    OneOrMore(.anyOf("0123456789."))
-                }
-            }
-            ".swift"
-        }.ignoresCase()
-
-        do {
-            let zipFileManager = ZipFileManager()
-            return try await zipFileManager.withZipFile(filename) { zip -> Manifests? in
-                let contents = zipFileManager.contents(of: zip)
-                let packageSwiftFiles = try await contents.compactMap {
-                    file -> (filename: String, position: ZipFilePosition)? in
-                    let filename = file.filename
-                    guard let firstSlash = filename.firstIndex(where: { $0 == "/" }) else {
-                        return nil
-                    }
-                    let filename2 = filename[firstSlash...].lowercased()
-                    if filename2 == "/package.swift" || filename2.hasPrefix("/package@swift-") {
-                        return (filename: filename2, position: file.position)
-                    } else {
-                        return nil
-                    }
-                }.collect(maxElements: .max)
-                var manifestVersions: [Manifests.Version] = []
-                var defaultManifest: ByteBuffer?
-                for file in packageSwiftFiles {
-                    if file.filename == "/package.swift" {
-                        defaultManifest = try await zipFileManager.loadFile(zip, at: file.position)
-                    } else if let v = file.filename.wholeMatch(of: packageSwiftRegex)?.output.1 {
-                        let version = String(v)
-                        let fileContents = try await zipFileManager.loadFile(zip, at: file.position)
-                        manifestVersions.append(
-                            .init(manifest: fileContents, swiftVersion: version)
-                        )
-                    } else {
-                        continue
-                    }
-                }
-                guard let defaultManifest else { return nil }
-                return .init(default: defaultManifest, versions: manifestVersions)
-            }
-        } catch {
-            throw Problem(status: .internalServerError, detail: "\(error)")
+    /// Return status of a create package release job
+    @Sendable func createReleaseStatus(_ request: Request, context: Context) async throws -> Response {
+        let id = try context.parameters.require("id")
+        guard let status = try await self.publishStatusManager.get(id: id) else {
+            throw Problem(
+                status: .badRequest,
+                detail: "invalid package"
+            )
         }
-    }
-}
+        switch status {
+        case .inProgress:
+            return Response(status: .accepted, headers: [.retryAfter: "5"])
 
-extension AsyncSequence {
-    // Collect contents of AsyncSequence into Array
-    func collect(maxElements: Int) async throws -> [Element] {
-        var count = 0
-        var array: [Element] = []
-        for try await element in self {
-            if count >= maxElements {
-                break
-            }
-            array.append(element)
-            count += 1
+        case .failed(let problem):
+            throw Problem(
+                status: .init(code: problem.status),
+                type: problem.url,
+                detail: problem.details
+            )
+
+        case .success(let address):
+            return .redirect(to: "\(self.urlRoot)\(address)", type: .permanent)
         }
-        return array
     }
 }

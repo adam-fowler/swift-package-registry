@@ -1,26 +1,22 @@
 import Hummingbird
 
-protocol Storage: Sendable {
+protocol FileStorage: Sendable {
     func writeFile<AS: AsyncSequence>(
         _ filename: String,
-        contents: AS,
-        context: some RequestContext
+        contents: AS
     ) async throws where AS.Element == ByteBuffer
 
     func writeFile(
         _ filename: String,
-        buffer: ByteBuffer,
-        context: some RequestContext
+        buffer: ByteBuffer
     ) async throws
 
     func makeDirectory(
-        _ path: String,
-        context: some RequestContext
+        _ path: String
     ) async throws
 
     func readFile(
         _ filename: String,
-        context: some RequestContext,
         process: (ByteBuffer) async throws -> Void
     ) async throws
 }
