@@ -87,8 +87,8 @@ cd $REPO_DIR
 
 writePackageMetadata
 
-OWNER_NAME=$(echo $METADATA | jq -r '.owner.login')
-PACKAGE_NAME=$(echo $METADATA | jq -r '.name')
+OWNER_NAME=$(echo $METADATA | jq -r '.owner.login' | sed 's/[^a-zA-Z0-9\-\_]/-/g')
+PACKAGE_NAME=$(echo $METADATA | jq -r '.name' | sed 's/[^a-zA-Z0-9\-\_]/-/g')
 PACKAGE_ID="$OWNER_NAME.$PACKAGE_NAME"
 
 echo "Publishing $PACKAGE_ID v$VERSION ..."
