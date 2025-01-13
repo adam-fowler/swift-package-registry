@@ -27,51 +27,53 @@ struct PublishJobController<PackageReleasesRepo: PackageReleaseRepository, Manif
     let publishStatusManager: PublishStatusManager<KeyValueStore>
 
     func registerJobs(jobQueue: JobQueue<some JobQueueDriver>) {
-        jobQueue.registerJob(parameters: PublishPackageJob.self) { parameters, context in
-            let packageRelease = try self.createRelease(parameters: parameters)
+        jobQueue.registerJob(execute: publishPackageJob)
+    }
 
-            // process zip file and extract package.swift
-            let manifests = try await self.extractManifestsFromZipFile(
-                self.storage.rootFolder + parameters.sourceArchiveFile
-            )
-            guard let manifests else {
-                try await publishStatusManager.set(
-                    id: parameters.publishRequestID,
-                    status: .failed(
-                        .init(
-                            status: HTTPResponse.Status.unprocessableContent.code,
-                            details: "package doesn't contain a valid manifest (Package.swift) file"
-                        )
-                    )
-                )
-                return
-            }
-            // save release metadata
-            guard try await self.packageRepository.add(packageRelease, logger: context.logger) else {
-                try await publishStatusManager.set(
-                    id: parameters.publishRequestID,
-                    status: .failed(
-                        .init(
-                            status: HTTPResponse.Status.conflict.code,
-                            url: ProblemType.versionAlreadyExists.url,
-                            details: "a release with version \(parameters.version) already exists"
-                        )
-                    )
-                )
-                return
-            }
-            // save manifests
-            try await self.manifestRepository.add(
-                .init(packageId: parameters.id, version: parameters.version),
-                manifests: manifests,
-                logger: context.logger
-            )
-            // set as successful
+    func publishPackageJob(parameters: PublishPackageJob, context: JobContext) async throws {
+        let packageRelease = try self.createRelease(parameters: parameters)
+
+        // process zip file and extract package.swift
+        let manifests = try await self.extractManifestsFromZipFile(
+            self.storage.rootFolder + parameters.sourceArchiveFile
+        )
+        guard let manifests else {
             try await publishStatusManager.set(
                 id: parameters.publishRequestID,
-                status: .success("\(parameters.id.scope)/\(parameters.id.name)/\(parameters.version)")
+                status: .failed(
+                    .init(
+                        status: HTTPResponse.Status.unprocessableContent.code,
+                        details: "package doesn't contain a valid manifest (Package.swift) file"
+                    )
+                )
             )
+            return
         }
+        // save release metadata
+        guard try await self.packageRepository.add(packageRelease, logger: context.logger) else {
+            try await publishStatusManager.set(
+                id: parameters.publishRequestID,
+                status: .failed(
+                    .init(
+                        status: HTTPResponse.Status.conflict.code,
+                        url: ProblemType.versionAlreadyExists.url,
+                        details: "a release with version \(parameters.version) already exists"
+                    )
+                )
+            )
+            return
+        }
+        // save manifests
+        try await self.manifestRepository.add(
+            .init(packageId: parameters.id, version: parameters.version),
+            manifests: manifests,
+            logger: context.logger
+        )
+        // set as successful
+        try await publishStatusManager.set(
+            id: parameters.publishRequestID,
+            status: .success("\(parameters.id.scope)/\(parameters.id.name)/\(parameters.version)")
+        )
     }
 
     func createRelease(parameters: PublishPackageJob) throws -> PackageRelease {
