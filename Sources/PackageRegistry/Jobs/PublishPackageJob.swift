@@ -15,9 +15,9 @@ struct PublishPackageJob: JobParameters {
     let version: Version
     let sourceArchiveFile: String
     let sourceArchiveDigest: String
-    let sourceArchiveSignature: String?
+    let sourceArchiveSignature: Data?
     let metadata: Data?
-    let metadataSignature: String?
+    let metadataSignature: Data?
 }
 
 struct PublishJobController<PackageReleasesRepo: PackageReleaseRepository, ManifestsRepo: ManifestRepository, KeyValueStore: PersistDriver> {
@@ -82,7 +82,7 @@ struct PublishJobController<PackageReleasesRepo: PackageReleaseRepository, Manif
             type: "application/zip",
             checksum: parameters.sourceArchiveDigest,
             signing: parameters.sourceArchiveSignature.map {
-                .init(signatureBase64Encoded: $0, signatureFormat: "cms-1.0.0")
+                .init(signatureBase64Encoded: $0.base64EncodedString(), signatureFormat: "cms-1.0.0")
             }
         )
         guard let metadata = parameters.metadata else {

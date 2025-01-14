@@ -1,6 +1,9 @@
 #!/bin/bash
 
+set -eu
+
 NAME_WITH_OWNER=$1
+SCRIPT_FOLDER=$(realpath $(dirname $0))
 
 cleanup()
 {
@@ -93,4 +96,6 @@ PACKAGE_ID="$OWNER_NAME.$PACKAGE_NAME"
 
 echo "Publishing $PACKAGE_ID v$VERSION ..."
 
-swift package-registry publish --metadata-path "$PACKAGE_METADATA_FILE" $PACKAGE_ID $VERSION
+swift package-registry publish $PACKAGE_ID $VERSION \
+    --metadata-path "$PACKAGE_METADATA_FILE"
+    

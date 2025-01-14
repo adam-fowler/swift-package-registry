@@ -305,9 +305,9 @@ struct PackageRegistryController<
         guard case .boundary = try await iterator.next() else { throw HTTPError(.badRequest) }
 
         var sourceArchiveDigest: SHA256Digest?
-        var sourceArchiveSignature: String?
+        var sourceArchiveSignature: ByteBuffer?
         var metadata: ByteBuffer?
-        var metadataSignature: String?
+        var metadataSignature: ByteBuffer?
 
         loop: while true {
             switch try await iterator.next() {
@@ -336,11 +336,11 @@ struct PackageRegistryController<
                 case "source-archive-signature":
                     guard let metaDataPart = try await iterator.nextCollatedPart() else { throw HTTPError(.badRequest) }
                     guard case .bodyChunk(let bufferView) = metaDataPart else { throw HTTPError(.badRequest) }
-                    sourceArchiveSignature = String(decoding: bufferView, as: UTF8.self)
+                    sourceArchiveSignature = ByteBuffer(bufferView)
                 case "metadata-signature":
                     guard let metaDataPart = try await iterator.nextCollatedPart() else { throw HTTPError(.badRequest) }
                     guard case .bodyChunk(let bufferView) = metaDataPart else { throw HTTPError(.badRequest) }
-                    metadataSignature = String(decoding: bufferView, as: UTF8.self)
+                    metadataSignature = ByteBuffer(bufferView)
                 default:
                     throw HTTPError(.badRequest, message: "Unexpected part in multipart file")
                 }
@@ -388,9 +388,9 @@ struct PackageRegistryController<
                 version: version,
                 sourceArchiveFile: sourceArchiveFilename,
                 sourceArchiveDigest: sourceArchiveDigestHex,
-                sourceArchiveSignature: sourceArchiveSignature,
+                sourceArchiveSignature: sourceArchiveSignature.map { Data(buffer: $0, byteTransferStrategy: .noCopy) },
                 metadata: metadata.map { Data(buffer: $0, byteTransferStrategy: .noCopy) },
-                metadataSignature: metadataSignature
+                metadataSignature: metadataSignature.map { Data(buffer: $0, byteTransferStrategy: .noCopy) }
             )
         )
         try await self.publishStatusManager.set(id: requestId, status: .inProgress)
