@@ -1,3 +1,4 @@
+import AsyncHTTPClient
 import Hummingbird
 import HummingbirdBasicAuth
 import HummingbirdCore
@@ -10,6 +11,7 @@ import NIOSSL
 import PostgresMigrations
 import PostgresNIO
 import ServiceLifecycle
+import SwiftASN1
 
 /// Application arguments protocol. We use a protocol so we can call
 /// `HBApplication.configure` inside Tests as well as in the App executable.
@@ -39,137 +41,146 @@ public func buildApplication(_ args: some AppArguments) async throws -> any Appl
     {
         tlsConfiguration = try getTLSConfiguration(certificateChain: tlsCertificateChain, privateKey: tlsPrivateKey)
     }
-
+    let httpClient = HTTPClient()
     let fileStorage = LocalFileStorage(rootFolder: "registry")
 
-    let router: Router<PackageRegistryRequestContext>
-    var services: [any Service] = []
-    var beforeServerStarts: (@Sendable () async throws -> Void)?
-    if !args.inMemory {
-        let postgresClient = PostgresClient(
-            configuration: .init(host: "localhost", username: "spruser", password: "spruser", database: "swiftpackageregistry", tls: .disable),
-            backgroundLogger: logger
-        )
-        let migrations = DatabaseMigrations()
-        await migrations.add(CreatePackageRelease())
-        await migrations.add(CreateURLPackageReference())
-        await migrations.add(CreateManifest())
-        await migrations.add(CreateUsers())
-        await migrations.add(AddAdminUser())
+    do {
+        let router: Router<PackageRegistryRequestContext>
+        var services: [any Service] = [HTTPClientService(client: httpClient)]
+        var beforeServerStarts: (@Sendable () async throws -> Void)?
+        if !args.inMemory {
+            let postgresClient = PostgresClient(
+                configuration: .init(host: "localhost", username: "spruser", password: "spruser", database: "swiftpackageregistry", tls: .disable),
+                backgroundLogger: logger
+            )
+            let migrations = DatabaseMigrations()
+            await migrations.add(CreatePackageRelease())
+            await migrations.add(CreateURLPackageReference())
+            await migrations.add(CreateManifest())
+            await migrations.add(CreateUsers())
+            await migrations.add(AddAdminUser())
 
-        let jobQueue = await JobQueue(
-            .postgres(
-                client: postgresClient,
-                migrations: migrations,
-                configuration: .init(pollTime: .milliseconds(10)),
+            let jobQueue = await JobQueue(
+                .postgres(
+                    client: postgresClient,
+                    migrations: migrations,
+                    configuration: .init(pollTime: .milliseconds(10)),
+                    logger: logger
+                ),
+                numWorkers: 1,
                 logger: logger
-            ),
-            numWorkers: 1,
-            logger: logger
-        )
+            )
 
-        let keyValueStore = await PostgresPersistDriver(client: postgresClient, migrations: migrations, logger: logger)
-        let userRepository = PostgresUserRepository(client: postgresClient)
-        let packageRepository = PostgresPackageReleaseRepository(client: postgresClient)
-        let manifestRepository = PostgresManifestRepository(client: postgresClient)
+            let keyValueStore = await PostgresPersistDriver(client: postgresClient, migrations: migrations, logger: logger)
+            let userRepository = PostgresUserRepository(client: postgresClient)
+            let packageRepository = PostgresPackageReleaseRepository(client: postgresClient)
+            let manifestRepository = PostgresManifestRepository(client: postgresClient)
 
-        router = buildRouter(
-            https: tlsConfiguration != nil,
-            serverAddress: serverAddress,
-            keyValueStore: keyValueStore,
-            jobQueue: jobQueue,
-            fileStorage: fileStorage,
-            userRepository: userRepository,
-            packageRepository: packageRepository,
-            manifestRepository: manifestRepository
-        )
+            router = buildRouter(
+                https: tlsConfiguration != nil,
+                serverAddress: serverAddress,
+                keyValueStore: keyValueStore,
+                jobQueue: jobQueue,
+                fileStorage: fileStorage,
+                userRepository: userRepository,
+                packageRepository: packageRepository,
+                manifestRepository: manifestRepository
+            )
 
-        registerJobs(
-            jobQueue: jobQueue,
-            keyValueStore: keyValueStore,
-            fileStorage: fileStorage,
-            packageRepository: packageRepository,
-            manifestRepository: manifestRepository
-        )
+            try registerJobs(
+                env: env,
+                jobQueue: jobQueue,
+                keyValueStore: keyValueStore,
+                fileStorage: fileStorage,
+                httpClient: httpClient,
+                packageRepository: packageRepository,
+                manifestRepository: manifestRepository
+            )
 
-        services.append(postgresClient)
-        services.append(jobQueue)
-        services.append(keyValueStore)
+            services.append(postgresClient)
+            services.append(jobQueue)
+            services.append(keyValueStore)
 
-        beforeServerStarts = {
-            do {
-                if args.revert {
-                    try await migrations.revert(client: postgresClient, logger: logger, dryRun: false)
+            beforeServerStarts = {
+                do {
+                    if args.revert {
+                        try await migrations.revert(client: postgresClient, logger: logger, dryRun: false)
+                    }
+                    try await migrations.apply(client: postgresClient, logger: logger, dryRun: !(args.migrate || args.revert))
+                    try await PackageStatus.setDataType(client: postgresClient, logger: logger)
+                } catch {
+                    print(String(reflecting: error))
+                    throw error
                 }
-                try await migrations.apply(client: postgresClient, logger: logger, dryRun: !(args.migrate || args.revert))
-                try await PackageStatus.setDataType(client: postgresClient, logger: logger)
-            } catch {
-                print(String(reflecting: error))
-                throw error
             }
+        } else {
+            let userRepository = MemoryUserRepository()
+            let jobQueue = JobQueue(
+                .memory,
+                numWorkers: 1,
+                logger: logger
+            )
+            let keyValueStore = MemoryPersistDriver()
+            let packageRepository = MemoryPackageReleaseRepository()
+            let manifestRepository = MemoryManifestRepository()
+
+            router = buildRouter(
+                https: tlsConfiguration != nil,
+                serverAddress: serverAddress,
+                keyValueStore: keyValueStore,
+                jobQueue: jobQueue,
+                fileStorage: fileStorage,
+                userRepository: userRepository,
+                packageRepository: packageRepository,
+                manifestRepository: manifestRepository
+            )
+
+            try registerJobs(
+                env: env,
+                jobQueue: jobQueue,
+                keyValueStore: keyValueStore,
+                fileStorage: fileStorage,
+                httpClient: httpClient,
+                packageRepository: packageRepository,
+                manifestRepository: manifestRepository
+            )
+
+            services.append(jobQueue)
+            services.append(keyValueStore)
         }
-    } else {
-        let userRepository = MemoryUserRepository()
-        let jobQueue = JobQueue(
-            .memory,
-            numWorkers: 1,
-            logger: logger
-        )
-        let keyValueStore = MemoryPersistDriver()
-        let packageRepository = MemoryPackageReleaseRepository()
-        let manifestRepository = MemoryManifestRepository()
 
-        router = buildRouter(
-            https: tlsConfiguration != nil,
-            serverAddress: serverAddress,
-            keyValueStore: keyValueStore,
-            jobQueue: jobQueue,
-            fileStorage: fileStorage,
-            userRepository: userRepository,
-            packageRepository: packageRepository,
-            manifestRepository: manifestRepository
-        )
+        var app: Application<RouterResponder<PackageRegistryRequestContext>>
+        if let tlsConfiguration {
+            app = try Application(
+                router: router,
+                server: .tls(tlsConfiguration: tlsConfiguration),
+                configuration: .init(
+                    address: .hostname(args.hostname, port: args.port),
+                    serverName: serverAddress
+                ),
+                services: services,
+                logger: logger
+            )
+        } else {
+            app = Application(
+                router: router,
+                configuration: .init(
+                    address: .hostname(args.hostname, port: args.port),
+                    serverName: serverAddress
+                ),
+                services: services,
+                logger: logger
+            )
+        }
 
-        registerJobs(
-            jobQueue: jobQueue,
-            keyValueStore: keyValueStore,
-            fileStorage: fileStorage,
-            packageRepository: packageRepository,
-            manifestRepository: manifestRepository
-        )
-
-        services.append(jobQueue)
-        services.append(keyValueStore)
+        if let beforeServerStarts {
+            app.beforeServerStarts(perform: beforeServerStarts)
+        }
+        return app
+    } catch {
+        try await httpClient.shutdown()
+        throw error
     }
-
-    var app: Application<RouterResponder<PackageRegistryRequestContext>>
-    if let tlsConfiguration {
-        app = try Application(
-            router: router,
-            server: .tls(tlsConfiguration: tlsConfiguration),
-            configuration: .init(
-                address: .hostname(args.hostname, port: args.port),
-                serverName: serverAddress
-            ),
-            services: services,
-            logger: logger
-        )
-    } else {
-        app = Application(
-            router: router,
-            configuration: .init(
-                address: .hostname(args.hostname, port: args.port),
-                serverName: serverAddress
-            ),
-            services: services,
-            logger: logger
-        )
-    }
-
-    if let beforeServerStarts {
-        app.beforeServerStarts(perform: beforeServerStarts)
-    }
-    return app
 }
 
 func getTLSConfiguration(certificateChain: String, privateKey: String) throws -> TLSConfiguration {
@@ -228,16 +239,30 @@ func buildRouter(
 }
 
 func registerJobs(
+    env: Environment,
     jobQueue: JobQueue<some JobQueueDriver>,
     keyValueStore: some PersistDriver,
     fileStorage: LocalFileStorage,
+    httpClient: HTTPClient,
     packageRepository: some PackageReleaseRepository,
     manifestRepository: some ManifestRepository
-) {
+) throws {
+    let trustedRoots: [[UInt8]] =
+        if let trustRootsPEM = env.get("package_signing_trusted_roots") {
+            [try PEMDocument(pemString: trustRootsPEM).derBytes]
+        } else {
+            []
+        }
+    let packageSignatureVerification = try PackageSignatureVerification(
+        trustedRoots: trustedRoots,
+        allowUntrustedCertificates: env.get("package_signing_allow_untrusted", as: Bool.self) ?? false
+    )
     PublishJobController(
         storage: fileStorage,
         packageRepository: packageRepository,
         manifestRepository: manifestRepository,
-        publishStatusManager: .init(keyValueStore: keyValueStore)
+        publishStatusManager: .init(keyValueStore: keyValueStore),
+        httpClient: httpClient,
+        packageSignatureVerification: packageSignatureVerification
     ).registerJobs(jobQueue: jobQueue)
 }

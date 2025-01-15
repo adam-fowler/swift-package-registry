@@ -1,10 +1,13 @@
+import AsyncHTTPClient
 import Foundation
 import HTTPTypes
 import Hummingbird
 import Jobs
+import Logging
 import NIOCore
 import NIOFoundationCompat
 import RegexBuilder
+import X509
 import Zip
 
 struct PublishPackageJob: JobParameters {
@@ -20,60 +23,96 @@ struct PublishPackageJob: JobParameters {
     let metadataSignature: Data?
 }
 
-struct PublishJobController<PackageReleasesRepo: PackageReleaseRepository, ManifestsRepo: ManifestRepository, KeyValueStore: PersistDriver> {
+struct PackageSignatureVerification {
+    let trustedRoots: [Certificate]
+    let allowUntrustedCertificates: Bool
+
+    init(
+        trustedRoots: [[UInt8]],
+        allowUntrustedCertificates: Bool
+    ) throws {
+        self.trustedRoots = try trustedRoots.map { try Certificate(derEncoded: $0) }
+        self.allowUntrustedCertificates = allowUntrustedCertificates
+    }
+
+    var verifierConfiguration: VerifierConfiguration {
+        .init(
+            trustedRoots: trustedRoots,
+            includeDefaultTrustRoots: true,
+            certificateExpiration: .enabled(validationTime: .now),
+            certificateRevocation: .allowSoftFail(validationTime: .now)
+        )
+    }
+}
+
+struct PublishJobController<
+    PackageReleasesRepo: PackageReleaseRepository,
+    ManifestsRepo: ManifestRepository,
+    KeyValueStore: PersistDriver
+> {
     let storage: LocalFileStorage
     let packageRepository: PackageReleasesRepo
     let manifestRepository: ManifestsRepo
     let publishStatusManager: PublishStatusManager<KeyValueStore>
+    let httpClient: HTTPClient
+    let packageSignatureVerification: PackageSignatureVerification
 
     func registerJobs(jobQueue: JobQueue<some JobQueueDriver>) {
         jobQueue.registerJob(execute: publishPackageJob)
     }
 
     func publishPackageJob(parameters: PublishPackageJob, context: JobContext) async throws {
-        let packageRelease = try self.createRelease(parameters: parameters)
+        do {
+            // verify signatures
+            try await verifySignature(parameters.sourceArchiveSignature, logger: context.logger)
+            try await verifySignature(parameters.metadataSignature, content: parameters.metadata, logger: context.logger)
 
-        // process zip file and extract package.swift
-        let manifests = try await self.extractManifestsFromZipFile(
-            self.storage.rootFolder + parameters.sourceArchiveFile
-        )
-        guard let manifests else {
+            // create package release
+            let packageRelease = try self.createRelease(parameters: parameters)
+
+            // process zip file and extract package.swift
+            let manifests = try await self.extractManifestsFromZipFile(
+                self.storage.rootFolder + parameters.sourceArchiveFile
+            )
+            guard let manifests else {
+                throw Problem(
+                    status: HTTPResponse.Status.unprocessableContent,
+                    detail: "Package doesn't contain a valid manifest (Package.swift) file"
+                )
+            }
+            // save release metadata
+            guard try await self.packageRepository.add(packageRelease, logger: context.logger) else {
+                throw Problem(
+                    status: HTTPResponse.Status.conflict,
+                    type: ProblemType.versionAlreadyExists.url,
+                    detail: "A release with version \(parameters.version) already exists"
+                )
+            }
+            // save manifests
+            try await self.manifestRepository.add(
+                .init(packageId: parameters.id, version: parameters.version),
+                manifests: manifests,
+                logger: context.logger
+            )
+            // set as successful
+            try await publishStatusManager.set(
+                id: parameters.publishRequestID,
+                status: .success("\(parameters.id.scope)/\(parameters.id.name)/\(parameters.version)")
+            )
+        } catch let error as Problem {
+            context.logger.debug("Publish failed: \(error.detail ?? "No details")")
             try await publishStatusManager.set(
                 id: parameters.publishRequestID,
                 status: .failed(
                     .init(
-                        status: HTTPResponse.Status.unprocessableContent.code,
-                        details: "package doesn't contain a valid manifest (Package.swift) file"
+                        status: error.status.code,
+                        url: error.type,
+                        detail: error.detail
                     )
                 )
             )
-            return
+
         }
-        // save release metadata
-        guard try await self.packageRepository.add(packageRelease, logger: context.logger) else {
-            try await publishStatusManager.set(
-                id: parameters.publishRequestID,
-                status: .failed(
-                    .init(
-                        status: HTTPResponse.Status.conflict.code,
-                        url: ProblemType.versionAlreadyExists.url,
-                        details: "a release with version \(parameters.version) already exists"
-                    )
-                )
-            )
-            return
-        }
-        // save manifests
-        try await self.manifestRepository.add(
-            .init(packageId: parameters.id, version: parameters.version),
-            manifests: manifests,
-            logger: context.logger
-        )
-        // set as successful
-        try await publishStatusManager.set(
-            id: parameters.publishRequestID,
-            status: .success("\(parameters.id.scope)/\(parameters.id.name)/\(parameters.version)")
-        )
     }
 
     func createRelease(parameters: PublishPackageJob) throws -> PackageRelease {
@@ -95,7 +134,7 @@ struct PublishJobController<PackageReleasesRepo: PackageReleaseRepository, Manif
                 packageMetadata.repositoryURLs = repositoryURLs.map { $0.standardizedGitURL() }
             }
         } catch {
-            throw Problem(status: .unprocessableContent, detail: "invalid JSON provided for release metadata.")
+            throw Problem(status: .unprocessableContent, detail: "Invalid JSON provided for release metadata.")
         }
         return .init(
             id: parameters.id,
@@ -104,6 +143,56 @@ struct PublishJobController<PackageReleasesRepo: PackageReleaseRepository, Manif
             metadata: packageMetadata,
             publishedAt: Date.now.formatted(.iso8601)
         )
+    }
+
+    func verifySignature(_ signatureBytes: Data?, content: Data? = nil, logger: Logger) async throws {
+        guard let signatureBytes else { return }
+
+        do {
+            let signatureProvider = CMSSignatureProvider(httpClient: self.httpClient)
+            if let content {
+                let value = try await signatureProvider.verify(
+                    signatureBytes: [UInt8](signatureBytes),
+                    content: content,
+                    verifierConfiguration: packageSignatureVerification.verifierConfiguration
+                )
+                logger.debug("Data signed with \(value)")
+
+            } else {
+                let value = try await signatureProvider.status(
+                    signatureBytes: [UInt8](signatureBytes),
+                    verifierConfiguration: packageSignatureVerification.verifierConfiguration
+                )
+                logger.debug("Data signed with \(value)")
+            }
+        } catch {
+            switch error {
+            case .invalid(let string):
+                throw Problem(
+                    status: HTTPResponse.Status.unprocessableContent,
+                    detail: "Provided signature data is invalid: \(string)"
+                )
+            case .signatureInvalid(let string):
+                throw Problem(
+                    status: HTTPResponse.Status.unprocessableContent,
+                    detail: "Provided signature is invalid: \(string)"
+                )
+            case .certificateInvalid(let string):
+                throw Problem(
+                    status: HTTPResponse.Status.unprocessableContent,
+                    detail: "Provided signature's certificate is invalid: \(string)"
+                )
+            case .certificateNotTrusted(let signingEntity):
+                if self.packageSignatureVerification.allowUntrustedCertificates {
+                    logger.debug("Data signed with untrusted certificate \(signingEntity)")
+                } else {
+                    throw Problem(
+                        status: HTTPResponse.Status.unprocessableContent,
+                        detail: "Package signed with untrusted certificate \(signingEntity)"
+                    )
+                }
+            }
+        }
     }
 
     /// Extract manifests from zip file
