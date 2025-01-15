@@ -3,15 +3,15 @@ import Hummingbird
 struct PublishStatusManager<KeyValueStore: PersistDriver> {
     enum PublishStatus: Codable {
         struct Problem: Codable {
-            internal init(status: Int, url: String? = nil, details: String? = nil) {
+            internal init(status: Int, url: String? = nil, detail: String? = nil) {
                 self.status = status
                 self.url = url
-                self.details = details
+                self.detail = detail
             }
 
             let status: Int
             let url: String?
-            let details: String?
+            let detail: String?
         }
         case inProgress
         case failed(Problem)

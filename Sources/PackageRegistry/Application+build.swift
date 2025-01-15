@@ -1,3 +1,4 @@
+import AsyncHTTPClient
 import Hummingbird
 import HummingbirdBasicAuth
 import HummingbirdCore
@@ -10,6 +11,7 @@ import NIOSSL
 import PostgresMigrations
 import PostgresNIO
 import ServiceLifecycle
+import SwiftASN1
 
 /// Application arguments protocol. We use a protocol so we can call
 /// `HBApplication.configure` inside Tests as well as in the App executable.
@@ -39,11 +41,11 @@ public func buildApplication(_ args: some AppArguments) async throws -> any Appl
     {
         tlsConfiguration = try getTLSConfiguration(certificateChain: tlsCertificateChain, privateKey: tlsPrivateKey)
     }
-
+    let httpClient = HTTPClient()
     let fileStorage = LocalFileStorage(rootFolder: "registry")
 
     let router: Router<PackageRegistryRequestContext>
-    var services: [any Service] = []
+    var services: [any Service] = [HTTPClientService(client: httpClient)]
     var beforeServerStarts: (@Sendable () async throws -> Void)?
     if !args.inMemory {
         let postgresClient = PostgresClient(
@@ -84,10 +86,12 @@ public func buildApplication(_ args: some AppArguments) async throws -> any Appl
             manifestRepository: manifestRepository
         )
 
-        registerJobs(
+        try registerJobs(
+            env: env,
             jobQueue: jobQueue,
             keyValueStore: keyValueStore,
             fileStorage: fileStorage,
+            httpClient: httpClient,
             packageRepository: packageRepository,
             manifestRepository: manifestRepository
         )
@@ -130,10 +134,12 @@ public func buildApplication(_ args: some AppArguments) async throws -> any Appl
             manifestRepository: manifestRepository
         )
 
-        registerJobs(
+        try registerJobs(
+            env: env,
             jobQueue: jobQueue,
             keyValueStore: keyValueStore,
             fileStorage: fileStorage,
+            httpClient: httpClient,
             packageRepository: packageRepository,
             manifestRepository: manifestRepository
         )
@@ -228,16 +234,30 @@ func buildRouter(
 }
 
 func registerJobs(
+    env: Environment,
     jobQueue: JobQueue<some JobQueueDriver>,
     keyValueStore: some PersistDriver,
     fileStorage: LocalFileStorage,
+    httpClient: HTTPClient,
     packageRepository: some PackageReleaseRepository,
     manifestRepository: some ManifestRepository
-) {
+) throws {
+    let trustedRoots: [UInt8] =
+        if let trustRootsPEM = env.get("package_signing_trusted_roots") {
+            try PEMDocument(pemString: trustRootsPEM).derBytes
+        } else {
+            []
+        }
+    let packageSignatureVerification = try PackageSignatureVerification(
+        trustedRoots: [trustedRoots],
+        allowUntrustedCertificates: env.get("package_signing_allow_untrusted", as: Bool.self) ?? false
+    )
     PublishJobController(
         storage: fileStorage,
         packageRepository: packageRepository,
         manifestRepository: manifestRepository,
-        publishStatusManager: .init(keyValueStore: keyValueStore)
+        publishStatusManager: .init(keyValueStore: keyValueStore),
+        httpClient: httpClient,
+        packageSignatureVerification: packageSignatureVerification
     ).registerJobs(jobQueue: jobQueue)
 }

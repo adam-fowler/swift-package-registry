@@ -420,7 +420,7 @@ struct PackageRegistryController<
             throw Problem(
                 status: .init(code: problem.status),
                 type: problem.url,
-                detail: problem.details
+                detail: problem.detail
             )
 
         case .success(let address):
