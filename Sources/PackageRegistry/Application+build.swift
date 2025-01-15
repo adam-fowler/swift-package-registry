@@ -247,14 +247,14 @@ func registerJobs(
     packageRepository: some PackageReleaseRepository,
     manifestRepository: some ManifestRepository
 ) throws {
-    let trustedRoots: [UInt8] =
+    let trustedRoots: [[UInt8]] =
         if let trustRootsPEM = env.get("package_signing_trusted_roots") {
-            try PEMDocument(pemString: trustRootsPEM).derBytes
+            [try PEMDocument(pemString: trustRootsPEM).derBytes]
         } else {
             []
         }
     let packageSignatureVerification = try PackageSignatureVerification(
-        trustedRoots: [trustedRoots],
+        trustedRoots: trustedRoots,
         allowUntrustedCertificates: env.get("package_signing_allow_untrusted", as: Bool.self) ?? false
     )
     PublishJobController(
