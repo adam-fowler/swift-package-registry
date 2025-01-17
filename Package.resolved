@@ -1,5 +1,5 @@
 {
-  "originHash" : "71976a3376a9104c1b4af0924c67806c9c2ed9f6e9497a776480c4232d2fa8a6",
+  "originHash" : "0d5658856b6519749f7d146bdbc82bbf1b13eb81ac2a7b0591cb294bff19bc91",
   "pins" : [
     {
       "identity" : "async-http-client",
@@ -15,8 +15,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/hummingbird-project/hummingbird.git",
       "state" : {
-        "revision" : "7a41c20c25866064f22b2bfa2c8194083e7e1595",
-        "version" : "2.6.1"
+        "revision" : "480f29f074878cd258b615225acf9049f94f52c3",
+        "version" : "2.6.2"
       }
     },
     {
@@ -43,7 +43,7 @@
       "location" : "https://github.com/vapor/multipart-kit.git",
       "state" : {
         "branch" : "main",
-        "revision" : "beea78b8cdc428e39f8bee96dbe69a2ddb4757cf"
+        "revision" : "48c10581d3f1fc968414f1f9bbd34551233249ba"
       }
     },
     {
@@ -78,8 +78,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/apple/swift-asn1.git",
       "state" : {
-        "revision" : "7faebca1ea4f9aaf0cda1cef7c43aecd2311ddf6",
-        "version" : "1.3.0"
+        "revision" : "ae33e5941bb88d88538d0a6b19ca0b01e6c76dcf",
+        "version" : "1.3.1"
       }
     },
     {
@@ -132,8 +132,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/apple/swift-distributed-tracing.git",
       "state" : {
-        "revision" : "6483d340853a944c96dbcc28b27dd10b6c581703",
-        "version" : "1.1.2"
+        "revision" : "a64a0abc2530f767af15dd88dda7f64d5f1ff9de",
+        "version" : "1.2.0"
       }
     },
     {
@@ -168,8 +168,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/hummingbird-project/swift-jobs.git",
       "state" : {
-        "revision" : "6aeb0a179567b944ecf81e1bbfdd474c1ee171f1",
-        "version" : "1.0.0-beta.6"
+        "revision" : "1fb1585ef88b3b74f190e6f8d390ad47987651e1",
+        "version" : "1.0.0-beta.7"
       }
     },
     {
@@ -195,8 +195,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/apple/swift-metrics.git",
       "state" : {
-        "revision" : "e0165b53d49b413dd987526b641e05e246782685",
-        "version" : "2.5.0"
+        "revision" : "5e63558d12e0267782019f5dadfcae83a7d06e09",
+        "version" : "2.5.1"
       }
     },
     {
@@ -204,8 +204,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/apple/swift-nio.git",
       "state" : {
-        "revision" : "dca6594f65308c761a9c409e09fbf35f48d50d34",
-        "version" : "2.77.0"
+        "revision" : "ba72f31e11275fc5bf060c966cf6c1f36842a291",
+        "version" : "2.79.0"
       }
     },
     {
@@ -285,8 +285,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/adam-fowler/swift-zip-archive",
       "state" : {
-        "branch" : "main",
-        "revision" : "4035563b5c966ff87f7a70c9045b2c39b3fe0d4c"
+        "revision" : "20353259e47da171382ae478688c83d2d7b79239",
+        "version" : "0.0.1"
       }
     }
   ],
