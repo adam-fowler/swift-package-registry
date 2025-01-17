@@ -9,6 +9,7 @@ let package = Package(
     name: "swift-package-registry",
     platforms: [.macOS(.v15)],
     dependencies: [
+        .package(url: "https://github.com/adam-fowler/swift-zip-archive", branch: "main"),
         .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.3.0"),
         .package(url: "https://github.com/apple/swift-algorithms.git", from: "1.0.0"),
         .package(url: "https://github.com/apple/swift-asn1.git", from: "1.0.0"),
@@ -46,17 +47,9 @@ let package = Package(
                 .product(name: "StructuredFieldValues", package: "swift-http-structured-headers"),
                 .product(name: "SwiftASN1", package: "swift-asn1"),
                 .product(name: "X509", package: "swift-certificates"),
-                .byName(name: "Zip"),
+                .product(name: "ZipArchive", package: "swift-zip-archive"),
             ],
             swiftSettings: swiftSettings
-        ),
-        .target(name: "CMinizip", linkerSettings: [.linkedLibrary("z")]),
-        .target(
-            name: "Zip",
-            dependencies: [
-                "CMinizip",
-                .product(name: "NIOPosix", package: "swift-nio"),
-            ]
         ),
         .testTarget(
             name: "PackageRegistryTests",

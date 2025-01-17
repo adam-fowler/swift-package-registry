@@ -6,9 +6,10 @@ import Jobs
 import Logging
 import NIOCore
 import NIOFoundationCompat
+import NIOPosix
 import RegexBuilder
 import X509
-import Zip
+import ZipArchive
 
 struct PublishPackageJob: JobParameters {
     static var jobName: String { "PackageRegistry:Publish" }
@@ -197,19 +198,53 @@ struct PublishJobController<
 
     /// Extract manifests from zip file
     func extractManifestsFromZipFile(_ filename: String) async throws -> Manifests? {
-        let packageSwiftRegex = Regex {
-            "/package"
-            Optionally {
-                "@swift-"
-                Capture {
-                    OneOrMore(.anyOf("0123456789."))
-                }
-            }
-            ".swift"
-        }.ignoresCase()
-
         do {
-            let zipFileManager = ZipFileManager()
+            return try await NIOThreadPool.singleton.runIfActive {
+                let packageSwiftRegex = Regex {
+                    "/package"
+                    Optionally {
+                        "@swift-"
+                        Capture {
+                            OneOrMore(.anyOf("0123456789."))
+                        }
+                    }
+                    ".swift"
+                }.ignoresCase()
+
+                let zipArchiveReader = try ZipArchiveReader(ZipFileStorage(filename))
+                let directory = try zipArchiveReader.readDirectory()
+                let packageSwiftFiles = directory.compactMap { file -> Zip.FileHeader? in
+                    let filename = file.filename
+                    guard let firstSlash = filename.firstIndex(where: { $0 == "/" }) else {
+                        return nil
+                    }
+                    let filename2 = filename[firstSlash...].lowercased()
+                    if filename2 == "/package.swift" || filename2.hasPrefix("/package@swift-") {
+                        return file
+                    } else {
+                        return nil
+                    }
+                }
+
+                var manifestVersions: [Manifests.Version] = []
+                var defaultManifest: ByteBuffer?
+                for file in packageSwiftFiles {
+                    if file.filename == "/package.swift" {
+                        defaultManifest = .init(bytes: try zipArchiveReader.readFile(file))
+                    } else if let v = file.filename.wholeMatch(of: packageSwiftRegex)?.output.1 {
+                        let version = String(v)
+                        let fileContents = ByteBuffer(bytes: try zipArchiveReader.readFile(file))
+                        manifestVersions.append(
+                            .init(manifest: fileContents, swiftVersion: version)
+                        )
+                    } else {
+                        continue
+                    }
+                }
+                guard let defaultManifest else { return nil }
+                return .init(default: defaultManifest, versions: manifestVersions)
+            }
+            /*let zipFileManager = ZipFileManager()
             return try await zipFileManager.withZipFile(filename) { zip -> Manifests? in
                 let contents = zipFileManager.contents(of: zip)
                 let packageSwiftFiles = try await contents.compactMap {
@@ -242,7 +277,7 @@ struct PublishJobController<
                 }
                 guard let defaultManifest else { return nil }
                 return .init(default: defaultManifest, versions: manifestVersions)
-            }
+            }*/
         } catch {
             throw Problem(status: .internalServerError, detail: "\(error)")
         }
