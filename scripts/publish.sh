@@ -97,7 +97,9 @@ PACKAGE_ID="$OWNER_NAME.$PACKAGE_NAME"
 echo "Publishing $PACKAGE_ID v$VERSION ..."
 
 swift package-registry publish $PACKAGE_ID $VERSION \
-    --metadata-path "$PACKAGE_METADATA_FILE" \
-    --private-key-path "$SCRIPT_FOLDER/../temp/private-key.der" \
-    --cert-chain-paths "$SCRIPT_FOLDER/../temp/cert.der"
+    --metadata-path "$PACKAGE_METADATA_FILE"
+#swift package-registry publish $PACKAGE_ID $VERSION \
+#    --metadata-path "$PACKAGE_METADATA_FILE" \
+#    --private-key-path "$SCRIPT_FOLDER/../temp/private-key.der" \
+#    --cert-chain-paths "$SCRIPT_FOLDER/../temp/cert.der"
     
