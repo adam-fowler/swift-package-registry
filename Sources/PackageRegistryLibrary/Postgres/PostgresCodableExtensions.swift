@@ -2,24 +2,24 @@ import PostgresNIO
 
 extension PackageRelease: PostgresCodable {
     /// The data type encoded into the `byteBuffer` in ``encode(into:context:)``.
-    static var psqlType: PostgresDataType { .jsonb }
+    public static var psqlType: PostgresDataType { .jsonb }
 
     /// The Postgres encoding format used to encode the value into `byteBuffer` in ``encode(into:context:)``.
-    static var psqlFormat: PostgresFormat { .binary }
+    public static var psqlFormat: PostgresFormat { .binary }
 }
 
 extension PackageIdentifier: PostgresCodable {
-    static var psqlType: PostgresDataType { .text }
-    static var psqlFormat: PostgresFormat { .text }
+    public static var psqlType: PostgresDataType { .text }
+    public static var psqlFormat: PostgresFormat { .text }
 
-    func encode(
+    public func encode(
         into byteBuffer: inout ByteBuffer,
         context: PostgresEncodingContext<some PostgresNIO.PostgresJSONEncoder>
     ) throws {
         id.encode(into: &byteBuffer, context: context)
     }
 
-    init(
+    public init(
         from byteBuffer: inout ByteBuffer,
         type: PostgresDataType,
         format: PostgresFormat,
@@ -35,32 +35,34 @@ extension PackageIdentifier: PostgresCodable {
 }
 
 extension PackageStatus: PostgresCodable {
-    nonisolated(unsafe) static var psqlType: PostgresDataType = .null
-    static var psqlFormat: PostgresFormat { .text }
+    public nonisolated(unsafe) static var psqlType: PostgresDataType = .null
+    public static var psqlFormat: PostgresFormat { .text }
 
-    static func setDataType(client: PostgresClient, logger: Logger) async throws {
-        guard let statusDataType: PostgresDataType = try await client.withConnection({ connection -> PostgresDataType? in
-            let stream = try await connection.query(
-                "SELECT oid FROM pg_type WHERE typname = 'status';",
-                logger: logger
-            )
-            return try await stream.decode(UInt32.self, context: .default)
-                .first { _ in true }
-                .map { oid in PostgresDataType(numericCast(oid)) }
-        }) else {
+    public static func setDataType(client: PostgresClient, logger: Logger) async throws {
+        guard
+            let statusDataType: PostgresDataType = try await client.withConnection({ connection -> PostgresDataType? in
+                let stream = try await connection.query(
+                    "SELECT oid FROM pg_type WHERE typname = 'status';",
+                    logger: logger
+                )
+                return try await stream.decode(UInt32.self, context: .default)
+                    .first { _ in true }
+                    .map { oid in PostgresDataType(numericCast(oid)) }
+            })
+        else {
             throw PostgresError(message: "Failed to get status type")
         }
         Self.psqlType = statusDataType
     }
 
-    func encode(
+    public func encode(
         into byteBuffer: inout ByteBuffer,
         context: PostgresEncodingContext<some PostgresNIO.PostgresJSONEncoder>
     ) throws {
         byteBuffer.writeString(self.rawValue)
     }
 
-    init(
+    public init(
         from byteBuffer: inout ByteBuffer,
         type: PostgresDataType,
         format: PostgresFormat,

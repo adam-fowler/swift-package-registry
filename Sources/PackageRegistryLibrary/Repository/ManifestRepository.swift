@@ -1,7 +1,7 @@
 import Logging
 import NIOCore
 
-struct Manifests {
+public struct Manifests: Sendable {
     struct Version {
         let manifest: ByteBuffer
         let swiftVersion: String
@@ -12,7 +12,7 @@ struct Manifests {
 }
 
 /// Manifest repository
-protocol ManifestRepository: Sendable {
+public protocol ManifestRepository: Sendable {
     func add(_ id: PackageReleaseIdentifier, manifests: Manifests, logger: Logger) async throws
     func get(_ id: PackageReleaseIdentifier, logger: Logger) async throws -> Manifests?
 }

@@ -24,11 +24,11 @@ struct PublishPackageJob: JobParameters {
     let metadataSignature: Data?
 }
 
-struct PackageSignatureVerification {
+public struct PackageSignatureVerification: Sendable {
     let trustedRoots: [Certificate]
     let allowUntrustedCertificates: Bool
 
-    init(
+    public init(
         trustedRoots: [[UInt8]],
         allowUntrustedCertificates: Bool
     ) throws {
@@ -46,11 +46,11 @@ struct PackageSignatureVerification {
     }
 }
 
-struct PublishJobController<
+public struct PublishJobController<
     PackageReleasesRepo: PackageReleaseRepository,
     ManifestsRepo: ManifestRepository,
     KeyValueStore: PersistDriver
-> {
+>: Sendable {
     let storage: LocalFileStorage
     let packageRepository: PackageReleasesRepo
     let manifestRepository: ManifestsRepo
@@ -58,11 +58,27 @@ struct PublishJobController<
     let httpClient: HTTPClient
     let packageSignatureVerification: PackageSignatureVerification
 
-    func registerJobs(jobQueue: JobQueue<some JobQueueDriver>) {
+    public init(
+        storage: LocalFileStorage,
+        packageRepository: PackageReleasesRepo,
+        manifestRepository: ManifestsRepo,
+        publishStatusManager: PublishStatusManager<KeyValueStore>,
+        httpClient: HTTPClient,
+        packageSignatureVerification: PackageSignatureVerification
+    ) {
+        self.storage = storage
+        self.packageRepository = packageRepository
+        self.manifestRepository = manifestRepository
+        self.publishStatusManager = publishStatusManager
+        self.httpClient = httpClient
+        self.packageSignatureVerification = packageSignatureVerification
+    }
+
+    public func registerJobs(jobQueue: JobQueue<some JobQueueDriver>) {
         jobQueue.registerJob(execute: publishPackageJob)
     }
 
-    func publishPackageJob(parameters: PublishPackageJob, context: JobContext) async throws {
+    @Sendable func publishPackageJob(parameters: PublishPackageJob, context: JobContext) async throws {
         do {
             // verify signatures
             try await verifySignature(parameters.sourceArchiveSignature, logger: context.logger)

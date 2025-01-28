@@ -1,6 +1,6 @@
 import Hummingbird
 
-protocol FileStorage: Sendable {
+public protocol FileStorage: Sendable {
     func writeFile<AS: AsyncSequence>(
         _ filename: String,
         contents: AS

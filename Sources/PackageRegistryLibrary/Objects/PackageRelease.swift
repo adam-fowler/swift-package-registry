@@ -27,7 +27,7 @@ struct PackageMetadata: Codable {
     var repositoryURLs: [String]?
 }
 
-struct PackageReleaseIdentifier: Hashable, Equatable {
+public struct PackageReleaseIdentifier: Hashable, Equatable, Sendable {
     let packageId: PackageIdentifier
     let version: Version
 
@@ -37,7 +37,7 @@ struct PackageReleaseIdentifier: Hashable, Equatable {
 /// Package release information
 ///
 /// Refer to: https://github.com/apple/swift-package-manager/blob/main/Documentation/PackageRegistry/Registry.md#42-fetch-information-about-a-package-release
-struct PackageRelease: Codable, ResponseEncodable {
+public struct PackageRelease: Codable, ResponseEncodable, Sendable {
     struct Resource: Codable {
         struct Signing: Codable {
             let signatureBase64Encoded: String

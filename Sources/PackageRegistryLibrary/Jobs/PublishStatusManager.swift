@@ -1,6 +1,6 @@
 import Hummingbird
 
-struct PublishStatusManager<KeyValueStore: PersistDriver> {
+public struct PublishStatusManager<KeyValueStore: PersistDriver>: Sendable {
     enum PublishStatus: Codable {
         struct Problem: Codable {
             internal init(status: Int, url: String? = nil, detail: String? = nil) {
@@ -19,6 +19,10 @@ struct PublishStatusManager<KeyValueStore: PersistDriver> {
     }
 
     let keyValueStore: KeyValueStore
+
+    public init(keyValueStore: KeyValueStore) {
+        self.keyValueStore = keyValueStore
+    }
 
     func get(id: String) async throws -> PublishStatus? {
         try await keyValueStore.get(key: id, as: PublishStatus.self)

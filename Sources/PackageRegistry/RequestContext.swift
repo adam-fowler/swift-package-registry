@@ -2,12 +2,13 @@ import Hummingbird
 import HummingbirdAuth
 import Logging
 import NIOCore
+import PackageRegistryLibrary
 
-struct PackageRegistryRequestContext: AuthRequestContext, RequestContext {
-    var coreContext: CoreRequestContextStorage
-    var identity: User?
+public struct AppRequestContext: PackageRegistryRequestContext {
+    public var coreContext: CoreRequestContextStorage
+    public var identity: User?
 
-    init(source: Source) {
+    public init(source: Source) {
         self.coreContext = .init(source: source)
         self.identity = nil
     }

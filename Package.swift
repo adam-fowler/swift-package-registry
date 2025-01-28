@@ -8,6 +8,9 @@ let swiftSettings: [SwiftSetting] = []
 let package = Package(
     name: "swift-package-registry",
     platforms: [.macOS(.v15)],
+    products: [
+        .library(name: "PackageRegistryLibrary", targets: ["PackageRegistryLibrary"])
+    ],
     dependencies: [
         .package(url: "https://github.com/adam-fowler/swift-zip-archive", from: "0.3.0"),
         .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.3.0"),
@@ -28,6 +31,32 @@ let package = Package(
     targets: [
         .executableTarget(
             name: "PackageRegistry",
+            dependencies: [
+                "PackageRegistryLibrary",
+                .product(name: "Algorithms", package: "swift-algorithms"),
+                .product(name: "ArgumentParser", package: "swift-argument-parser"),
+                .product(name: "AsyncHTTPClient", package: "async-http-client"),
+                .product(name: "Crypto", package: "swift-crypto"),
+                .product(name: "Hummingbird", package: "hummingbird"),
+                .product(name: "HummingbirdAuth", package: "hummingbird-auth"),
+                .product(name: "HummingbirdBasicAuth", package: "hummingbird-auth"),
+                .product(name: "HummingbirdBcrypt", package: "hummingbird-auth"),
+                .product(name: "HummingbirdPostgres", package: "hummingbird-postgres"),
+                .product(name: "HummingbirdTLS", package: "hummingbird"),
+                .product(name: "JobsPostgres", package: "swift-jobs-postgres"),
+                .product(name: "MultipartKit", package: "multipart-kit"),
+                .product(name: "_NIOFileSystem", package: "swift-nio"),
+                .product(name: "PostgresMigrations", package: "hummingbird-postgres"),
+                .product(name: "PostgresNIO", package: "postgres-nio"),
+                .product(name: "StructuredFieldValues", package: "swift-http-structured-headers"),
+                .product(name: "SwiftASN1", package: "swift-asn1"),
+                .product(name: "X509", package: "swift-certificates"),
+                .product(name: "ZipArchive", package: "swift-zip-archive"),
+            ],
+            swiftSettings: swiftSettings
+        ),
+        .target(
+            name: "PackageRegistryLibrary",
             dependencies: [
                 .product(name: "Algorithms", package: "swift-algorithms"),
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
