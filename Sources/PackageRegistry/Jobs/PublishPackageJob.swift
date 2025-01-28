@@ -6,9 +6,10 @@ import Jobs
 import Logging
 import NIOCore
 import NIOFoundationCompat
+import NIOPosix
 import RegexBuilder
 import X509
-import Zip
+import ZipArchive
 
 struct PublishPackageJob: JobParameters {
     static var jobName: String { "PackageRegistry:Publish" }
@@ -72,7 +73,8 @@ struct PublishJobController<
 
             // process zip file and extract package.swift
             let manifests = try await self.extractManifestsFromZipFile(
-                self.storage.rootFolder + parameters.sourceArchiveFile
+                self.storage.rootFolder + parameters.sourceArchiveFile,
+                logger: context.logger
             )
             guard let manifests else {
                 throw Problem(
@@ -196,48 +198,59 @@ struct PublishJobController<
     }
 
     /// Extract manifests from zip file
-    func extractManifestsFromZipFile(_ filename: String) async throws -> Manifests? {
-        let packageSwiftRegex = Regex {
-            "/package"
-            Optionally {
-                "@swift-"
-                Capture {
-                    OneOrMore(.anyOf("0123456789."))
-                }
-            }
-            ".swift"
-        }.ignoresCase()
-
+    func extractManifestsFromZipFile(_ filename: String, logger: Logger) async throws -> Manifests? {
         do {
-            let zipFileManager = ZipFileManager()
-            return try await zipFileManager.withZipFile(filename) { zip -> Manifests? in
-                let contents = zipFileManager.contents(of: zip)
-                let packageSwiftFiles = try await contents.compactMap {
-                    file -> (filename: String, position: ZipFilePosition)? in
-                    let filename = file.filename
-                    guard let firstSlash = filename.firstIndex(where: { $0 == "/" }) else {
-                        return nil
+            return try await NIOThreadPool.singleton.runIfActive {
+                let packageSwiftRegex = Regex {
+                    "/package"
+                    Optionally {
+                        "@swift-"
+                        Capture {
+                            OneOrMore(.anyOf("0123456789"))
+                        }
+                        "."
+                        Capture {
+                            OneOrMore(.anyOf("0123456789"))
+                        }
                     }
-                    let filename2 = filename[firstSlash...].lowercased()
-                    if filename2 == "/package.swift" || filename2.hasPrefix("/package@swift-") {
-                        return (filename: filename2, position: file.position)
-                    } else {
-                        return nil
-                    }
-                }.collect(maxElements: .max)
+                    ".swift"
+                }.ignoresCase()
+
                 var manifestVersions: [Manifests.Version] = []
                 var defaultManifest: ByteBuffer?
-                for file in packageSwiftFiles {
-                    if file.filename == "/package.swift" {
-                        defaultManifest = try await zipFileManager.loadFile(zip, at: file.position)
-                    } else if let v = file.filename.wholeMatch(of: packageSwiftRegex)?.output.1 {
-                        let version = String(v)
-                        let fileContents = try await zipFileManager.loadFile(zip, at: file.position)
-                        manifestVersions.append(
-                            .init(manifest: fileContents, swiftVersion: version)
-                        )
-                    } else {
-                        continue
+
+                try ZipArchiveReader.withFile(filename) { zipArchiveReader in
+                    let directory = try zipArchiveReader.readDirectory()
+                    let packageSwiftFiles = directory.compactMap { file -> Zip.FileHeader? in
+                        // drop enclosing directory
+                        let filename = file.filename.drop { $0 != "/" }.lowercased()
+                        if filename == "/package.swift" || filename.hasPrefix("/package@swift-") {
+                            return file
+                        } else {
+                            return nil
+                        }
+                    }
+
+                    for file in packageSwiftFiles {
+                        // drop enclosing directory
+                        let filename = file.filename.drop { $0 != "/" }.lowercased()
+                        if filename == "/package.swift" {
+                            defaultManifest = .init(bytes: try zipArchiveReader.readFile(file))
+                        } else if let match = filename.wholeMatch(of: packageSwiftRegex),
+                            let major = match.output.1, let minor = match.output.2
+                        {
+                            let version = String("\(major).\(minor)")
+                            let fileContents = ByteBuffer(bytes: try zipArchiveReader.readFile(file))
+                            manifestVersions.append(
+                                .init(manifest: fileContents, swiftVersion: version)
+                            )
+                            logger.debug("Found Package.swift manifest", metadata: ["filename": .string(filename)])
+                        } else {
+                            throw Problem(
+                                status: HTTPResponse.Status.unprocessableContent,
+                                detail: "Failed to extract swift version from: \(filename)"
+                            )
+                        }
                     }
                 }
                 guard let defaultManifest else { return nil }

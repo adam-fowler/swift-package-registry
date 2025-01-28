@@ -7,7 +7,6 @@ import MultipartKit
 import NIOFoundationCompat
 import RegexBuilder
 import StructuredFieldValues
-import Zip
 
 struct PackageRegistryController<
     PackageReleasesRepo: PackageReleaseRepository,
