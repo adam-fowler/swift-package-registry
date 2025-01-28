@@ -8,14 +8,13 @@ import NIOFoundationCompat
 import RegexBuilder
 import StructuredFieldValues
 
-struct PackageRegistryController<
+public struct PackageRegistryController<
+    Context: PackageRegistryRequestContext,
     PackageReleasesRepo: PackageReleaseRepository,
     ManifestsRepo: ManifestRepository,
     JQD: JobQueueDriver,
     KeyValueStore: PersistDriver
-> {
-    typealias Context = PackageRegistryRequestContext
-
+>: Sendable {
     let storage: LocalFileStorage
     let packageRepository: PackageReleasesRepo
     let manifestRepository: ManifestsRepo
@@ -23,11 +22,28 @@ struct PackageRegistryController<
     let jobQueue: JobQueue<JQD>
     let publishStatusManager: PublishStatusManager<KeyValueStore>
 
+    public init(
+        storage: LocalFileStorage,
+        packageRepository: PackageReleasesRepo,
+        manifestRepository: ManifestsRepo,
+        urlRoot: String,
+        jobQueue: JobQueue<JQD>,
+        publishStatusManager: PublishStatusManager<KeyValueStore>
+    ) {
+        self.storage = storage
+        self.packageRepository = packageRepository
+        self.manifestRepository = manifestRepository
+        self.urlRoot = urlRoot
+        self.jobQueue = jobQueue
+        self.publishStatusManager = publishStatusManager
+    }
+
     // Routes with authentication
-    func routes(basicAuthenticator: BasicAuthenticator<some UserRepository>) -> RouteCollection<Context> {
+    public func routes(users: some UserRepository) -> RouteCollection<Context> {
         let routes = RouteCollection(context: Context.self)
+        routes.add(middleware: ProblemMiddleware())
         routes.group()
-            .add(middleware: basicAuthenticator)
+            .add(middleware: BasicAuthenticator(repository: users))
             .post("/", use: self.login)
         routes.add(middleware: VersionMiddleware(version: "1"))
         routes.get("/submissions/{id}", use: self.createReleaseStatus)
@@ -37,13 +53,13 @@ struct PackageRegistryController<
         routes.get("/identifiers", use: self.lookupIdentifiers)
         routes.get("/{scope}/{name}/{version}", use: self.getMetadata)
         routes.group()
-            .add(middleware: basicAuthenticator)
+            .add(middleware: BasicAuthenticator(repository: users))
             .put("/{scope}/{name}/{version}", use: self.createRelease)
         return routes
     }
 
     // Routes without authentication
-    func routes() -> RouteCollection<Context> {
+    public func routes() -> RouteCollection<Context> {
         let routes = RouteCollection(context: Context.self)
         routes.add(middleware: VersionMiddleware(version: "1"))
         routes.get("/submissions/{id}", use: self.createReleaseStatus)

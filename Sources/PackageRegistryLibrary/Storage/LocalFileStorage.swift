@@ -2,16 +2,16 @@ import Hummingbird
 import NIOFileSystem
 import NIOPosix
 
-struct LocalFileStorage: FileStorage {
+public struct LocalFileStorage: FileStorage {
     let rootFolder: String
     let fileSystem: FileSystem
 
-    init(rootFolder: String) {
+    public init(rootFolder: String) {
         self.rootFolder = rootFolder.addSuffix("/")
         self.fileSystem = .init(threadPool: .singleton)
     }
 
-    func writeFile<AS: AsyncSequence>(
+    public func writeFile<AS: AsyncSequence>(
         _ filename: String,
         contents: AS
     ) async throws where AS.Element == ByteBuffer {
@@ -26,7 +26,7 @@ struct LocalFileStorage: FileStorage {
         }
     }
 
-    func writeFile(
+    public func writeFile(
         _ filename: String,
         buffer: ByteBuffer
     ) async throws {
@@ -39,7 +39,7 @@ struct LocalFileStorage: FileStorage {
         }
     }
 
-    func makeDirectory(
+    public func makeDirectory(
         _ path: String
     ) async throws {
         let fullPath = self.rootFolder + path.dropPrefix("/")
@@ -50,7 +50,7 @@ struct LocalFileStorage: FileStorage {
         }
     }
 
-    func readFile(
+    public func readFile(
         _ filename: String,
         process: (ByteBuffer) async throws -> Void
     ) async throws {

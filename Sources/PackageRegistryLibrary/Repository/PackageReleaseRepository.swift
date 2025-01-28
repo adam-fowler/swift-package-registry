@@ -1,6 +1,6 @@
 import PostgresNIO
 
-enum PackageStatus: String {
+public enum PackageStatus: String, Sendable {
     case ok
     case deleted
     case processing
@@ -26,14 +26,14 @@ enum PackageStatus: String {
     }
 }
 
-struct ListRelease {
+public struct ListRelease: Sendable {
     let id: PackageIdentifier
     let version: Version
     let status: PackageStatus
 }
 
 /// Package release repository
-protocol PackageReleaseRepository: Sendable {
+public protocol PackageReleaseRepository: Sendable {
     func add(_ release: PackageRelease, status: PackageStatus, logger: Logger) async throws -> Bool
     func get(id: PackageIdentifier, version: Version, logger: Logger) async throws -> PackageRelease?
     func list(id: PackageIdentifier, logger: Logger) async throws -> [ListRelease]

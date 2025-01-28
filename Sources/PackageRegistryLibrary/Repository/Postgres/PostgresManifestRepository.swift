@@ -1,9 +1,13 @@
 import PostgresNIO
 
-struct PostgresManifestRepository: ManifestRepository {
+public struct PostgresManifestRepository: ManifestRepository {
     let client: PostgresClient
 
-    func add(_ id: PackageReleaseIdentifier, manifests: Manifests, logger: Logger) async throws {
+    public init(client: PostgresClient) {
+        self.client = client
+    }
+
+    public func add(_ id: PackageReleaseIdentifier, manifests: Manifests, logger: Logger) async throws {
         let defaultManifest = String(buffer: manifests.default)
         let manifestVersions = manifests.versions.map { String(buffer: $0.manifest) }
         let swiftVersions = manifests.versions.map(\.swiftVersion)
@@ -13,7 +17,7 @@ struct PostgresManifestRepository: ManifestRepository {
         )
     }
 
-    func get(_ id: PackageReleaseIdentifier, logger: Logger) async throws -> Manifests? {
+    public func get(_ id: PackageReleaseIdentifier, logger: Logger) async throws -> Manifests? {
         let stream = try await client.query(
             "SELECT default_manifest, manifest_versions, swift_versions FROM manifests WHERE release_id = \(id.id)",
             logger: logger

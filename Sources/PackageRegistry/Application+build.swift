@@ -8,6 +8,7 @@ import Jobs
 import JobsPostgres
 import Logging
 import NIOSSL
+import PackageRegistryLibrary
 import PostgresMigrations
 import PostgresNIO
 import ServiceLifecycle
@@ -45,7 +46,7 @@ public func buildApplication(_ args: some AppArguments) async throws -> any Appl
     let fileStorage = LocalFileStorage(rootFolder: "registry")
 
     do {
-        let router: Router<PackageRegistryRequestContext>
+        let router: Router<AppRequestContext>
         var services: [any Service] = [HTTPClientService(client: httpClient)]
         var beforeServerStarts: (@Sendable () async throws -> Void)?
         if !args.inMemory {
@@ -54,11 +55,7 @@ public func buildApplication(_ args: some AppArguments) async throws -> any Appl
                 backgroundLogger: logger
             )
             let migrations = DatabaseMigrations()
-            await migrations.add(CreatePackageRelease())
-            await migrations.add(CreateURLPackageReference())
-            await migrations.add(CreateManifest())
-            await migrations.add(CreateUsers())
-            await migrations.add(AddAdminUser())
+            await migrations.addPackageRegistryMigrations()
 
             let jobQueue = await JobQueue(
                 .postgres(
@@ -149,7 +146,7 @@ public func buildApplication(_ args: some AppArguments) async throws -> any Appl
             services.append(keyValueStore)
         }
 
-        var app: Application<RouterResponder<PackageRegistryRequestContext>>
+        var app: Application<RouterResponder<AppRequestContext>>
         if let tlsConfiguration {
             app = try Application(
                 router: router,
@@ -201,11 +198,12 @@ func buildRouter(
     userRepository: some UserRepository,
     packageRepository: some PackageReleaseRepository,
     manifestRepository: some ManifestRepository
-) -> Router<PackageRegistryRequestContext> {
-    let router = Router(context: PackageRegistryRequestContext.self, options: .autoGenerateHeadEndpoints)
-    router.add(middleware: LogRequestsMiddleware(.debug))
-    router.add(middleware: ProblemMiddleware())
-    router.add(middleware: OptionsMiddleware())
+) -> Router<AppRequestContext> {
+    let router = Router(context: AppRequestContext.self, options: .autoGenerateHeadEndpoints)
+    router.addMiddleware {
+        LogRequestsMiddleware(.debug)
+        OptionsMiddleware()
+    }
     router.get("/health") { _, _ -> HTTPResponse.Status in
         .ok
     }
@@ -219,7 +217,7 @@ func buildRouter(
                     urlRoot: "https://\(serverAddress)/registry/",
                     jobQueue: jobQueue,
                     publishStatusManager: .init(keyValueStore: keyValueStore)
-                ).routes(basicAuthenticator: BasicAuthenticator(repository: userRepository))
+                ).routes(users: userRepository)
             )
     } else {
         router.group("registry")

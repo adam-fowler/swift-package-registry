@@ -1,14 +1,18 @@
 import Foundation
 import PostgresNIO
 
-struct PostgresPackageReleaseRepository: PackageReleaseRepository {
+public struct PostgresPackageReleaseRepository: PackageReleaseRepository {
     struct Error: Swift.Error {
         let message: String
     }
 
     let client: PostgresClient
 
-    func add(_ package: PackageRelease, status: PackageStatus, logger: Logger) async throws -> Bool {
+    public init(client: PostgresClient) {
+        self.client = client
+    }
+    
+    public func add(_ package: PackageRelease, status: PackageStatus, logger: Logger) async throws -> Bool {
         let releaseID = package.releaseID.id
         do {
             _ = try await self.client.query(
@@ -33,7 +37,7 @@ struct PostgresPackageReleaseRepository: PackageReleaseRepository {
         return true
     }
 
-    func get(id: PackageIdentifier, version: Version, logger: Logger) async throws -> PackageRelease? {
+    public func get(id: PackageIdentifier, version: Version, logger: Logger) async throws -> PackageRelease? {
         let releaseId = PackageReleaseIdentifier(packageId: id, version: version)
         let stream = try await client.query(
             "SELECT release FROM PackageRelease WHERE id = \(releaseId.id) AND status = 'ok'",
@@ -42,7 +46,7 @@ struct PostgresPackageReleaseRepository: PackageReleaseRepository {
         return try await stream.decode(PackageRelease.self, context: .default).first { _ in true }
     }
 
-    func delete(id: PackageIdentifier, version: Version, logger: Logger) async throws {
+    public func delete(id: PackageIdentifier, version: Version, logger: Logger) async throws {
         let releaseId = PackageReleaseIdentifier(packageId: id, version: version)
         _ = try await self.client.query(
             "DELETE PackageRelease WHERE id = \(releaseId.id)",
@@ -50,7 +54,7 @@ struct PostgresPackageReleaseRepository: PackageReleaseRepository {
         )
     }
 
-    func list(id: PackageIdentifier, logger: Logger) async throws -> [ListRelease] {
+    public func list(id: PackageIdentifier, logger: Logger) async throws -> [ListRelease] {
         let stream = try await client.query(
             "SELECT release, status FROM PackageRelease WHERE package_id = \(id.id)",
             logger: logger
@@ -62,7 +66,7 @@ struct PostgresPackageReleaseRepository: PackageReleaseRepository {
         return releases
     }
 
-    func setStatus(id: PackageIdentifier, version: Version, status: PackageStatus, logger: Logger) async throws {
+    public func setStatus(id: PackageIdentifier, version: Version, status: PackageStatus, logger: Logger) async throws {
         let releaseId = PackageReleaseIdentifier(packageId: id, version: version)
         _ = try await self.client.query(
             "UPDATE PackageRelease SET status = \(status) WHERE id = \(releaseId.id)",
@@ -70,7 +74,7 @@ struct PostgresPackageReleaseRepository: PackageReleaseRepository {
         )
     }
 
-    func query(url: String, logger: Logger) async throws -> [PackageIdentifier] {
+    public func query(url: String, logger: Logger) async throws -> [PackageIdentifier] {
         let stream = try await client.query(
             "SELECT package_id FROM urls WHERE url = \(url)",
             logger: logger

@@ -1,8 +1,9 @@
 import Hummingbird
 import StructuredFieldValues
 
-struct OptionsMiddleware<Context: RequestContext>: RouterMiddleware {
-    func handle(_ request: Request, context: Context, next: (Request, Context) async throws -> Response) async throws -> Response {
+public struct OptionsMiddleware<Context: RequestContext>: RouterMiddleware {
+    public init() {}
+    public func handle(_ request: Request, context: Context, next: (Request, Context) async throws -> Response) async throws -> Response {
         if request.method == .options {
             let linkHeader = LinkHeader(items: [
                 .init(

@@ -2,7 +2,7 @@ import Logging
 import NIOConcurrencyHelpers
 
 /// Memory implementation of package release repository
-actor MemoryPackageReleaseRepository: PackageReleaseRepository {
+public actor MemoryPackageReleaseRepository: PackageReleaseRepository {
     struct PackageReleaseStorage {
         let release: PackageRelease
         var status: PackageStatus
@@ -12,11 +12,11 @@ actor MemoryPackageReleaseRepository: PackageReleaseRepository {
 
     let packages: NIOLockedValueBox<[String: PackageReleaseStorage]>
 
-    init() {
+    public init() {
         self.packages = .init(.init())
     }
 
-    func add(_ release: PackageRelease, status: PackageStatus, logger: Logger) throws -> Bool {
+    public func add(_ release: PackageRelease, status: PackageStatus, logger: Logger) throws -> Bool {
         let releaseID = release.releaseID
         return self.packages.withLockedValue {
             if $0[releaseID.id] != nil {
@@ -27,7 +27,7 @@ actor MemoryPackageReleaseRepository: PackageReleaseRepository {
         }
     }
 
-    func get(id: PackageIdentifier, version: Version, logger: Logger) throws -> PackageRelease? {
+    public func get(id: PackageIdentifier, version: Version, logger: Logger) throws -> PackageRelease? {
         let releaseId = PackageReleaseIdentifier(packageId: id, version: version)
         return self.packages.withLockedValue {
             if let packageRelease = $0[releaseId.id], packageRelease.status == .ok {
@@ -38,14 +38,14 @@ actor MemoryPackageReleaseRepository: PackageReleaseRepository {
         }
     }
 
-    func delete(id: PackageIdentifier, version: Version, logger: Logger) async throws {
+    public func delete(id: PackageIdentifier, version: Version, logger: Logger) async throws {
         let releaseId = PackageReleaseIdentifier(packageId: id, version: version)
         self.packages.withLockedValue {
             $0[releaseId.id] = nil
         }
     }
 
-    func list(id: PackageIdentifier, logger: Logger) throws -> [ListRelease] {
+    public func list(id: PackageIdentifier, logger: Logger) throws -> [ListRelease] {
         self.packages.withLockedValue {
             var releases = [ListRelease].init()
             for release in $0.values {
@@ -57,12 +57,12 @@ actor MemoryPackageReleaseRepository: PackageReleaseRepository {
         }
     }
 
-    func setStatus(id: PackageIdentifier, version: Version, status: PackageStatus, logger: Logger) {
+    public func setStatus(id: PackageIdentifier, version: Version, status: PackageStatus, logger: Logger) {
         let releaseId = PackageReleaseIdentifier(packageId: id, version: version)
         self.packages.withLockedValue { $0[releaseId.id]?.status = status }
     }
 
-    func query(url: String, logger: Logger) async throws -> [PackageIdentifier] {
+    public func query(url: String, logger: Logger) async throws -> [PackageIdentifier] {
         self.packages.withLockedValue {
             var identifierSet = Set<PackageIdentifier>()
             for package in $0.values {

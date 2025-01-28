@@ -1,17 +1,21 @@
 import Foundation
 import PostgresNIO
 
-struct PostgresUserRepository: UserRepository {
+public struct PostgresUserRepository: UserRepository {
     let client: PostgresClient
 
-    func add(user: User, logger: Logger) async throws {
+    public init(client: PostgresClient) {
+        self.client = client
+    }
+    
+    public func add(user: User, logger: Logger) async throws {
         _ = try await self.client.query(
             "INSERT INTO users VALUES (\(user.id), \(user.username), \(user.passwordHash))",
             logger: logger
         )
     }
 
-    func get(username: String, logger: Logger) async throws -> User? {
+    public func get(username: String, logger: Logger) async throws -> User? {
         let stream = try await client.query(
             "SELECT id, password_hash FROM users WHERE username = \(username)",
             logger: logger
@@ -22,7 +26,7 @@ struct PostgresUserRepository: UserRepository {
         return nil
     }
 
-    func get(id: UUID, logger: Logger) async throws -> User? {
+    public func get(id: UUID, logger: Logger) async throws -> User? {
         let stream = try await client.query(
             "SELECT username, password_hash FROM users WHERE id = \(id)",
             logger: logger
