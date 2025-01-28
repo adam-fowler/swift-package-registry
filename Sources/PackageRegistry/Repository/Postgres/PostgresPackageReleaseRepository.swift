@@ -8,11 +8,11 @@ struct PostgresPackageReleaseRepository: PackageReleaseRepository {
 
     let client: PostgresClient
 
-    func add(_ package: PackageRelease, logger: Logger) async throws -> Bool {
+    func add(_ package: PackageRelease, status: PackageStatus, logger: Logger) async throws -> Bool {
         let releaseID = package.releaseID.id
         do {
             _ = try await self.client.query(
-                "INSERT INTO PackageRelease VALUES (\(releaseID), \(package), \(package.id), 'ok')",
+                "INSERT INTO PackageRelease VALUES (\(releaseID), \(package), \(package.id), \(status))",
                 logger: logger
             )
         } catch let error as PSQLError {
@@ -36,10 +36,18 @@ struct PostgresPackageReleaseRepository: PackageReleaseRepository {
     func get(id: PackageIdentifier, version: Version, logger: Logger) async throws -> PackageRelease? {
         let releaseId = PackageReleaseIdentifier(packageId: id, version: version)
         let stream = try await client.query(
-            "SELECT release FROM PackageRelease WHERE id = \(releaseId.id)",
+            "SELECT release FROM PackageRelease WHERE id = \(releaseId.id) AND status = 'ok'",
             logger: logger
         )
         return try await stream.decode(PackageRelease.self, context: .default).first { _ in true }
+    }
+
+    func delete(id: PackageIdentifier, version: Version, logger: Logger) async throws {
+        let releaseId = PackageReleaseIdentifier(packageId: id, version: version)
+        _ = try await self.client.query(
+            "DELETE PackageRelease WHERE id = \(releaseId.id)",
+            logger: logger
+        )
     }
 
     func list(id: PackageIdentifier, logger: Logger) async throws -> [ListRelease] {

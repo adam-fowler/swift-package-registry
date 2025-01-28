@@ -16,20 +16,33 @@ actor MemoryPackageReleaseRepository: PackageReleaseRepository {
         self.packages = .init(.init())
     }
 
-    func add(_ release: PackageRelease, logger: Logger) throws -> Bool {
+    func add(_ release: PackageRelease, status: PackageStatus, logger: Logger) throws -> Bool {
         let releaseID = release.releaseID
-        return self.packages.withLockedValue { 
+        return self.packages.withLockedValue {
             if $0[releaseID.id] != nil {
                 return false
             }
-            $0[releaseID.id] = PackageReleaseStorage(release: release, status: .ok)
+            $0[releaseID.id] = PackageReleaseStorage(release: release, status: status)
             return true
         }
     }
 
     func get(id: PackageIdentifier, version: Version, logger: Logger) throws -> PackageRelease? {
         let releaseId = PackageReleaseIdentifier(packageId: id, version: version)
-        return self.packages.withLockedValue { $0[releaseId.id]?.release }
+        return self.packages.withLockedValue {
+            if let packageRelease = $0[releaseId.id], packageRelease.status == .ok {
+                packageRelease.release
+            } else {
+                nil
+            }
+        }
+    }
+
+    func delete(id: PackageIdentifier, version: Version, logger: Logger) async throws {
+        let releaseId = PackageReleaseIdentifier(packageId: id, version: version)
+        self.packages.withLockedValue {
+            $0[releaseId.id] = nil
+        }
     }
 
     func list(id: PackageIdentifier, logger: Logger) throws -> [ListRelease] {

@@ -377,6 +377,25 @@ struct PackageRegistryController<
                 )
             }
         }
+        let metadataData = metadata.map { Data(buffer: $0, byteTransferStrategy: .noCopy) }
+        let metadataSignatureData = metadataSignature.map { Data(buffer: $0, byteTransferStrategy: .noCopy) }
+        let sourceArchiveSignatureData = sourceArchiveSignature.map { Data(buffer: $0, byteTransferStrategy: .noCopy) }
+
+        let packageRelease = try createRelease(
+            id: id,
+            version: version,
+            metadata: metadataData,
+            sourceArchiveDigest: sourceArchiveDigestHex,
+            sourceArchiveSignature: sourceArchiveSignatureData
+        )
+        // save release metadata
+        guard try await self.packageRepository.add(packageRelease, status: .processing, logger: context.logger) else {
+            throw Problem(
+                status: HTTPResponse.Status.conflict,
+                type: ProblemType.versionAlreadyExists.url,
+                detail: "A release with version \(version) already exists"
+            )
+        }
 
         // push publish release job
         let requestId = UUID().uuidString
@@ -387,9 +406,9 @@ struct PackageRegistryController<
                 version: version,
                 sourceArchiveFile: sourceArchiveFilename,
                 sourceArchiveDigest: sourceArchiveDigestHex,
-                sourceArchiveSignature: sourceArchiveSignature.map { Data(buffer: $0, byteTransferStrategy: .noCopy) },
-                metadata: metadata.map { Data(buffer: $0, byteTransferStrategy: .noCopy) },
-                metadataSignature: metadataSignature.map { Data(buffer: $0, byteTransferStrategy: .noCopy) }
+                sourceArchiveSignature: sourceArchiveSignatureData,
+                metadata: metadataData,
+                metadataSignature: metadataSignatureData
             )
         )
         try await self.publishStatusManager.set(id: requestId, status: .inProgress)
@@ -399,6 +418,42 @@ struct PackageRegistryController<
                 .location: "\(self.urlRoot)submissions/\(requestId)",
                 .retryAfter: "5",
             ]
+        )
+    }
+
+    func createRelease(
+        id: PackageIdentifier,
+        version: Version,
+        metadata: Data?,
+        sourceArchiveDigest: String,
+        sourceArchiveSignature: Data?
+    ) throws -> PackageRelease {
+        let resource = PackageRelease.Resource(
+            name: "source-archive",
+            type: "application/zip",
+            checksum: sourceArchiveDigest,
+            signing: sourceArchiveSignature.map {
+                .init(signatureBase64Encoded: $0.base64EncodedString(), signatureFormat: "cms-1.0.0")
+            }
+        )
+        guard let metadata = metadata else {
+            throw Problem(status: .unprocessableContent, detail: "Release metadata is required to publish release.")
+        }
+        var packageMetadata: PackageMetadata
+        do {
+            packageMetadata = try JSONDecoder().decode(PackageMetadata.self, from: metadata)
+            if let repositoryURLs = packageMetadata.repositoryURLs {
+                packageMetadata.repositoryURLs = repositoryURLs.map { $0.standardizedGitURL() }
+            }
+        } catch {
+            throw Problem(status: .unprocessableContent, detail: "Invalid JSON provided for release metadata.")
+        }
+        return .init(
+            id: id,
+            version: version,
+            resources: [resource],
+            metadata: packageMetadata,
+            publishedAt: Date.now.formatted(.iso8601)
         )
     }
 

@@ -68,9 +68,6 @@ struct PublishJobController<
             try await verifySignature(parameters.sourceArchiveSignature, logger: context.logger)
             try await verifySignature(parameters.metadataSignature, content: parameters.metadata, logger: context.logger)
 
-            // create package release
-            let packageRelease = try self.createRelease(parameters: parameters)
-
             // process zip file and extract package.swift
             let manifests = try await self.extractManifestsFromZipFile(
                 self.storage.rootFolder + parameters.sourceArchiveFile,
@@ -82,20 +79,16 @@ struct PublishJobController<
                     detail: "Package doesn't contain a valid manifest (Package.swift) file"
                 )
             }
-            // save release metadata
-            guard try await self.packageRepository.add(packageRelease, logger: context.logger) else {
-                throw Problem(
-                    status: HTTPResponse.Status.conflict,
-                    type: ProblemType.versionAlreadyExists.url,
-                    detail: "A release with version \(parameters.version) already exists"
-                )
-            }
             // save manifests
             try await self.manifestRepository.add(
                 .init(packageId: parameters.id, version: parameters.version),
                 manifests: manifests,
                 logger: context.logger
             )
+
+            // set package version to be ok
+            try await self.packageRepository.setStatus(id: parameters.id, version: parameters.version, status: .ok, logger: context.logger)
+
             // set as successful
             try await publishStatusManager.set(
                 id: parameters.publishRequestID,
@@ -103,6 +96,7 @@ struct PublishJobController<
             )
         } catch let error as Problem {
             context.logger.debug("Publish failed: \(error.detail ?? "No details")")
+            try await self.packageRepository.delete(id: parameters.id, version: parameters.version, logger: context.logger)
             try await publishStatusManager.set(
                 id: parameters.publishRequestID,
                 status: .failed(
@@ -113,7 +107,6 @@ struct PublishJobController<
                     )
                 )
             )
-
         }
     }
 
