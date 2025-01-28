@@ -61,4 +61,13 @@ public struct LocalFileStorage: FileStorage {
             }
         }
     }
+
+    public func readFile(
+        _ filename: String
+    ) async throws -> ByteBuffer {
+        let fullFilename = self.rootFolder + filename.dropPrefix("/")
+        return try await self.fileSystem.withFileHandle(forReadingAt: .init(fullFilename)) { fileHandle in
+            try await fileHandle.readChunks().collect(upTo: .max)
+        }
+    }
 }
