@@ -24,8 +24,8 @@ let package = Package(
         .package(url: "https://github.com/hummingbird-project/hummingbird-auth.git", from: "2.0.0"),
         .package(url: "https://github.com/hummingbird-project/hummingbird-postgres.git", from: "0.5.0"),
         .package(url: "https://github.com/hummingbird-project/swift-jobs-postgres.git", from: "1.0.0-beta"),
-        .package(url: "https://github.com/swift-server/async-http-client.git", from: "1.0.0-beta"),
-        .package(url: "https://github.com/vapor/multipart-kit.git", branch: "main"),
+        .package(url: "https://github.com/swift-server/async-http-client.git", from: "1.22.0"),
+        .package(url: "https://github.com/vapor/multipart-kit.git", from: "5.0.0-alpha"),
         .package(url: "https://github.com/vapor/postgres-nio.git", from: "1.21.0"),
     ],
     targets: [
