@@ -19,4 +19,13 @@ public protocol FileStorage: Sendable {
         _ filename: String,
         process: (ByteBuffer) async throws -> Void
     ) async throws
+
+    func readFile(
+        _ filename: String
+    ) async throws -> ByteBuffer
+}
+
+// Error loading file
+enum FileStorageError: Error {
+    case failedToReadFile
 }
