@@ -12,7 +12,7 @@ let package = Package(
         .library(name: "PackageRegistryLibrary", targets: ["PackageRegistryLibrary"])
     ],
     dependencies: [
-        .package(url: "https://github.com/adam-fowler/swift-zip-archive", from: "0.3.0"),
+        .package(url: "https://github.com/adam-fowler/swift-zip-archive", from: "0.4.0"),
         .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.3.0"),
         .package(url: "https://github.com/apple/swift-algorithms.git", from: "1.0.0"),
         .package(url: "https://github.com/apple/swift-asn1.git", from: "1.0.0"),

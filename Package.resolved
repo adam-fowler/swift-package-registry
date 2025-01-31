@@ -1,5 +1,5 @@
 {
-  "originHash" : "cce02632206246f7830a231a84442585dbe8057d94c7fd1c27d0c2a8b7426644",
+  "originHash" : "8390f2b2065d2662f799f6e6b6c7cf1ccee907c928394b998d481cebf023b7ca",
   "pins" : [
     {
       "identity" : "async-http-client",
@@ -285,8 +285,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/adam-fowler/swift-zip-archive",
       "state" : {
-        "revision" : "d620b025d049de8eaa991314c63f22f887217374",
-        "version" : "0.3.0"
+        "revision" : "783c3d5a6373c3079a69bb96b413a439fd159dc9",
+        "version" : "0.4.0"
       }
     }
   ],

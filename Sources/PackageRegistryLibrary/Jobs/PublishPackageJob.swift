@@ -235,7 +235,7 @@ public struct PublishJobController<
             let directory = try zipArchiveReader.readDirectory()
             let packageSwiftFiles = directory.compactMap { file -> Zip.FileHeader? in
                 // drop enclosing directory
-                let filename = file.filename.drop { $0 != "/" }.lowercased()
+                let filename = file.filename.string.drop { $0 != "/" }.lowercased()
                 if filename == "/package.swift" || filename.hasPrefix("/package@swift-") {
                     return file
                 } else {
@@ -245,7 +245,7 @@ public struct PublishJobController<
 
             for file in packageSwiftFiles {
                 // drop enclosing directory
-                let filename = file.filename.drop { $0 != "/" }.lowercased()
+                let filename = file.filename.string.drop { $0 != "/" }.lowercased()
                 if filename == "/package.swift" {
                     defaultManifest = .init(bytes: try zipArchiveReader.readFile(file))
                 } else if let match = filename.wholeMatch(of: packageSwiftRegex),
