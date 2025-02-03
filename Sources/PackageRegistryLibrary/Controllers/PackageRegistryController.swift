@@ -10,12 +10,13 @@ import StructuredFieldValues
 
 public struct PackageRegistryController<
     Context: PackageRegistryRequestContext,
+    RegistryStorage: FileStorage,
     PackageReleasesRepo: PackageReleaseRepository,
     ManifestsRepo: ManifestRepository,
     JQD: JobQueueDriver,
     KeyValueStore: PersistDriver
 >: Sendable {
-    let storage: LocalFileStorage
+    let storage: RegistryStorage
     let packageRepository: PackageReleasesRepo
     let manifestRepository: ManifestsRepo
     let urlRoot: String
@@ -23,7 +24,7 @@ public struct PackageRegistryController<
     let publishStatusManager: PublishStatusManager<KeyValueStore>
 
     public init(
-        storage: LocalFileStorage,
+        storage: RegistryStorage,
         packageRepository: PackageReleasesRepo,
         manifestRepository: ManifestsRepo,
         urlRoot: String,

@@ -47,11 +47,12 @@ public struct PackageSignatureVerification: Sendable {
 }
 
 public struct PublishJobController<
+    RegistryStorage: FileStorage,
     PackageReleasesRepo: PackageReleaseRepository,
     ManifestsRepo: ManifestRepository,
     KeyValueStore: PersistDriver
 >: Sendable {
-    let storage: LocalFileStorage
+    let storage: RegistryStorage
     let packageRepository: PackageReleasesRepo
     let manifestRepository: ManifestsRepo
     let publishStatusManager: PublishStatusManager<KeyValueStore>
@@ -59,7 +60,7 @@ public struct PublishJobController<
     let packageSignatureVerification: PackageSignatureVerification
 
     public init(
-        storage: LocalFileStorage,
+        storage: RegistryStorage,
         packageRepository: PackageReleasesRepo,
         manifestRepository: ManifestsRepo,
         publishStatusManager: PublishStatusManager<KeyValueStore>,
@@ -80,7 +81,7 @@ public struct PublishJobController<
 
     @Sendable func publishPackageJob(parameters: PublishPackageJob, context: JobContext) async throws {
         do {
-            let sourceArchive = try await storage.readFile(self.storage.rootFolder + parameters.sourceArchiveFile)
+            let sourceArchive = try await storage.readFile(parameters.sourceArchiveFile)
             let sourceArchiveData = Data(buffer: sourceArchive, byteTransferStrategy: .noCopy)
             // verify signatures
             try await verifySignature(parameters.sourceArchiveSignature, content: sourceArchiveData, logger: context.logger)
