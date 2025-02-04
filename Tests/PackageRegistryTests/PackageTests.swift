@@ -12,7 +12,7 @@ import ZipArchive
 
 @Suite("Test different packages")
 struct PackageTests {
-    var packageDotSwift = """
+    static let packageDotSwift = """
         // swift-tools-version: 6.0
         import PackageDescription
 
@@ -26,9 +26,11 @@ struct PackageTests {
         )
         """
 
-    func createPackageZipArchive(packageId: String) throws -> ArraySlice<UInt8> {
+    func createPackageZipArchive(packageId: String, files: [String: String] = ["Package.swift": Self.packageDotSwift]) throws -> ArraySlice<UInt8> {
         let zipArchiveWriter = ZipArchiveWriter()
-        try zipArchiveWriter.writeFile(filename: "\(packageId)/Package.swift", contents: .init(packageDotSwift.utf8))
+        for file in files {
+            try zipArchiveWriter.writeFile(filename: "\(packageId)/\(file.key)", contents: .init(file.value.utf8))
+        }
         return try zipArchiveWriter.finalizeBuffer()
     }
 
@@ -140,7 +142,7 @@ struct PackageTests {
             let response = try await Self.uploadTestPackage(
                 client,
                 multipartBoundary: boundary,
-                buffer: .init(string: multipartForm),
+                buffer: .init(bytes: multipartForm),
                 packageIdentifier: .init("test.test-package")
             )
             #expect(response.status == .unprocessableContent)
