@@ -216,7 +216,7 @@ final class PackageRegistryTests: XCTestCase {
                 XCTAssertNotNil(directory.first { $0.filename == "test.test-package/Package.swift" })
             }
 
-            // test metadata
+            // test manifest
             try await client.execute(
                 uri: "/registry/test/test-package/0.1.0/Package.swift",
                 method: .get,
@@ -226,7 +226,7 @@ final class PackageRegistryTests: XCTestCase {
                 XCTAssert(String(buffer: response.body).hasPrefix("// swift-tools-version: 6.0"))
             }
 
-            // test manifest
+            // test metadata
             try await client.execute(
                 uri: "/registry/test/test-package/0.1.0",
                 method: .get,
