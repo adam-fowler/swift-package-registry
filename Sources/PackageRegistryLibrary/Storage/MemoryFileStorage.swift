@@ -1,7 +1,7 @@
 import NIOCore
 import Synchronization
 
-final class MemoryFileStorage: FileStorage {
+public final class MemoryFileStorage: FileStorage {
     public init() {
         self.files = .init([:])
     }

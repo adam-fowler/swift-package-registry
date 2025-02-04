@@ -1,6 +1,7 @@
 import AsyncHTTPClient
 import Hummingbird
 import HummingbirdBasicAuth
+import HummingbirdBcrypt
 import HummingbirdCore
 import HummingbirdPostgres
 import HummingbirdTLS
@@ -43,7 +44,6 @@ public func buildApplication(_ args: some AppArguments) async throws -> any Appl
         tlsConfiguration = try getTLSConfiguration(certificateChain: tlsCertificateChain, privateKey: tlsPrivateKey)
     }
     let httpClient = HTTPClient()
-    let fileStorage = LocalFileStorage(rootFolder: "registry")
 
     do {
         let router: Router<AppRequestContext>
@@ -68,6 +68,7 @@ public func buildApplication(_ args: some AppArguments) async throws -> any Appl
                 logger: logger
             )
 
+            let fileStorage = LocalFileStorage(rootFolder: "registry")
             let keyValueStore = await PostgresPersistDriver(client: postgresClient, migrations: migrations, logger: logger)
             let userRepository = PostgresUserRepository(client: postgresClient)
             let packageRepository = PostgresPackageReleaseRepository(client: postgresClient)
@@ -117,12 +118,19 @@ public func buildApplication(_ args: some AppArguments) async throws -> any Appl
                 numWorkers: 1,
                 logger: logger
             )
+            let fileStorage = MemoryFileStorage()
             let keyValueStore = MemoryPersistDriver()
             let packageRepository = MemoryPackageReleaseRepository()
             let manifestRepository = MemoryManifestRepository()
 
+            // given everything is new with every run, have to create an admin user every time
+            let password = "Password123"
+            logger.critical("User 'admin' password is \(password)")
+            let passwordHash = try await NIOThreadPool.singleton.runIfActive { Bcrypt.hash("Password123", cost: 12) }
+            try await userRepository.add(user: .init(id: .init(), username: "admin", passwordHash: passwordHash), logger: logger)
+
             router = buildRouter(
-                https: tlsConfiguration != nil,
+                https: true,
                 serverAddress: serverAddress,
                 keyValueStore: keyValueStore,
                 jobQueue: jobQueue,
@@ -194,7 +202,7 @@ func buildRouter(
     serverAddress: String,
     keyValueStore: some PersistDriver,
     jobQueue: JobQueue<some JobQueueDriver>,
-    fileStorage: LocalFileStorage,
+    fileStorage: some FileStorage,
     userRepository: some UserRepository,
     packageRepository: some PackageReleaseRepository,
     manifestRepository: some ManifestRepository
@@ -240,7 +248,7 @@ func registerJobs(
     env: Environment,
     jobQueue: JobQueue<some JobQueueDriver>,
     keyValueStore: some PersistDriver,
-    fileStorage: LocalFileStorage,
+    fileStorage: some FileStorage,
     httpClient: HTTPClient,
     packageRepository: some PackageReleaseRepository,
     manifestRepository: some ManifestRepository

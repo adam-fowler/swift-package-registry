@@ -83,9 +83,11 @@ let package = Package(
         .testTarget(
             name: "PackageRegistryTests",
             dependencies: [
+                .product(name: "HummingbirdAuthTesting", package: "hummingbird-auth"),
                 .product(name: "HummingbirdTesting", package: "hummingbird"),
                 "PackageRegistry",
-            ]
+            ],
+            resources: [.process("resources")]
         ),
     ]
 )

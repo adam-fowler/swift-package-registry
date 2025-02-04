@@ -10,12 +10,13 @@ import StructuredFieldValues
 
 public struct PackageRegistryController<
     Context: PackageRegistryRequestContext,
+    RegistryStorage: FileStorage,
     PackageReleasesRepo: PackageReleaseRepository,
     ManifestsRepo: ManifestRepository,
     JQD: JobQueueDriver,
     KeyValueStore: PersistDriver
 >: Sendable {
-    let storage: LocalFileStorage
+    let storage: RegistryStorage
     let packageRepository: PackageReleasesRepo
     let manifestRepository: ManifestsRepo
     let urlRoot: String
@@ -23,7 +24,7 @@ public struct PackageRegistryController<
     let publishStatusManager: PublishStatusManager<KeyValueStore>
 
     public init(
-        storage: LocalFileStorage,
+        storage: RegistryStorage,
         packageRepository: PackageReleasesRepo,
         manifestRepository: ManifestsRepo,
         urlRoot: String,
@@ -317,7 +318,11 @@ public struct PackageRegistryController<
         /// Parse multipart file, extracting metadata, saving source archive to disk
         let multipartStream = StreamingMultipartParserAsyncSequence(boundary: parameter.value, buffer: request.body.map { $0.readableBytesView })
         var iterator = multipartStream.makeAsyncIterator()
-        guard case .boundary = try await iterator.next() else { throw HTTPError(.badRequest) }
+        do {
+            guard case .boundary = try await iterator.next() else { throw HTTPError(.badRequest) }
+        } catch {
+            throw HTTPError(.badRequest)
+        }
 
         var sourceArchiveDigest: SHA256Digest?
         var sourceArchiveSignature: ByteBuffer?
