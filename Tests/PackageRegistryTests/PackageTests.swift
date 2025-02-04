@@ -265,6 +265,7 @@ struct PackageTests {
         }
     }
 
+    // Test responee when uploading version of package that is currently being processed
     @Test
     func uploadWhileProcessing() async throws {
         let boundary = UUID().uuidString
@@ -301,6 +302,71 @@ struct PackageTests {
             #expect(problem.type == ProblemType.versionAlreadyExists.url)
         }
     }
+
+    @Test
+    func uploadingMultipleVersions() async throws {
+        struct Releases: Codable {
+            struct Release: Codable {
+                let url: String
+            }
+            let releases: [String: Release]
+        }
+        let boundary = UUID().uuidString
+        let packageArchive = try createPackageZipArchive(packageId: "test.test-package")
+        let packageMetadata = PackageMetadata(
+            author: .init(name: "Joe Bloggs", email: nil, description: nil, organisation: nil, url: nil),
+            description: "Test package",
+            licenseURL: nil,
+            originalPublicationTime: nil,
+            readmeURL: nil
+        )
+        let multipartForm = try createMultipartForm(packageArchive: packageArchive, packageMetadata: packageMetadata, boundary: boundary)
+
+        let appArgs = TestArguments()
+        let app = try await buildApplication(appArgs)
+        let versions = ["1.0.0", "1.1.0", "1.1.1"]
+        try await app.test(.router) { client in
+            try await withThrowingTaskGroup(of: Void.self) { group in
+                for version in versions {
+                    group.addTask {
+                        let response = try await Self.uploadTestPackage(
+                            client,
+                            multipartBoundary: boundary,
+                            buffer: .init(bytes: multipartForm),
+                            packageIdentifier: .init("test.test-package"),
+                            version: version
+                        )
+                        #expect(response.status == .accepted)
+                        let location = try #require(response.headers[.location])
+
+                        let waitResponse = try await Self.waitForPackageToBeProcessed(client, location: location)
+                        #expect(waitResponse.status == .movedPermanently)
+                        #expect(
+                            waitResponse.headers[.location] == "https://\(appArgs.hostname):\(appArgs.port)/registry/test/test-package/\(version)"
+                        )
+                    }
+                }
+                try await group.waitForAll()
+            }
+
+            // test release list
+            try await client.execute(
+                uri: "/registry/test/test-package",
+                method: .get,
+                headers: [.accept: "application/vnd.swift.registry.v1"]
+            ) { response in
+                #expect(response.status == .ok)
+                let releases = try JSONDecoder().decode(Releases.self, from: response.body)
+                #expect(releases.releases.count == versions.count)
+                for version in versions {
+                    #expect(releases.releases[version]?.url == "https://\(appArgs.hostname):\(appArgs.port)/registry/test/test-package/\(version)")
+                    print(response.headers)
+                }
+            }
+
+        }
+    }
+
 }
 
 extension HTTPField.Name {

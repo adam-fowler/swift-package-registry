@@ -132,12 +132,6 @@ final class PackageRegistryTests: XCTestCase {
             }
             let releases: [String: Release]
         }
-        struct Metadata: Codable {
-            struct Release: Codable {
-                let url: String
-            }
-            let releases: [String: Release]
-        }
         let appArgs = TestArguments()
         let app = try await buildApplication(appArgs)
         let filePath = Bundle.module.path(forResource: "test-package", ofType: "bin")!
