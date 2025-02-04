@@ -130,7 +130,7 @@ public func buildApplication(_ args: some AppArguments) async throws -> any Appl
             try await userRepository.add(user: .init(id: .init(), username: "admin", passwordHash: passwordHash), logger: logger)
 
             router = buildRouter(
-                https: tlsConfiguration != nil,
+                https: true,
                 serverAddress: serverAddress,
                 keyValueStore: keyValueStore,
                 jobQueue: jobQueue,
