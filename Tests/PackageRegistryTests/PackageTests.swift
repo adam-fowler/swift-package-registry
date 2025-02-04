@@ -264,6 +264,43 @@ struct PackageTests {
             }
         }
     }
+
+    @Test
+    func uploadWhileProcessing() async throws {
+        let boundary = UUID().uuidString
+        let packageArchive = try createPackageZipArchive(packageId: "test.test-package")
+        let packageMetadata = PackageMetadata(
+            author: .init(name: "Joe Bloggs", email: nil, description: nil, organisation: nil, url: nil),
+            description: "Test package",
+            licenseURL: nil,
+            originalPublicationTime: nil,
+            readmeURL: nil
+        )
+        let multipartForm = try createMultipartForm(packageArchive: packageArchive, packageMetadata: packageMetadata, boundary: boundary)
+
+        let appArgs = TestArguments()
+        let app = try await buildApplication(appArgs)
+        try await app.test(.router) { client in
+            let response = try await Self.uploadTestPackage(
+                client,
+                multipartBoundary: boundary,
+                buffer: .init(bytes: multipartForm),
+                packageIdentifier: .init("test.test-package")
+            )
+            #expect(response.status == .accepted)
+            #expect(response.headers[.retryAfter] != nil)
+
+            let response2 = try await Self.uploadTestPackage(
+                client,
+                multipartBoundary: boundary,
+                buffer: .init(bytes: multipartForm),
+                packageIdentifier: .init("test.test-package")
+            )
+            #expect(response2.status == .conflict)
+            let problem = try JSONDecoder().decode(Problem.self, from: response2.body)
+            #expect(problem.type == ProblemType.versionAlreadyExists.url)
+        }
+    }
 }
 
 extension HTTPField.Name {

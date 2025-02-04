@@ -124,45 +124,7 @@ final class PackageRegistryTests: XCTestCase {
         }
     }
 
-    func testUploadVersion() async throws {
-        let appArgs = TestArguments()
-        let app = try await buildApplication(appArgs)
-        let filePath = Bundle.module.path(forResource: "test-package", ofType: "bin")!
-        let testPackageBuffer = try await FileSystem.shared.withFileHandle(forReadingAt: .init(filePath)) { reader in
-            try await reader.readToEnd(maximumSizeAllowed: .unlimited)
-        }
-        try await app.test(.router) { client in
-            let response = try await Self.uploadTestPackage(client, buffer: testPackageBuffer)
-            XCTAssertEqual(response.status, .accepted)
-            XCTAssertNotNil(response.headers[.retryAfter])
-            let location = try XCTUnwrap(response.headers[.location])
-
-            let waitResponse = try await Self.waitForPackageToBeProcessed(client, location: location)
-            XCTAssertEqual(waitResponse.headers[.location], "https://\(appArgs.hostname):\(appArgs.port)/registry/test/test-package/1.0.0")
-        }
-    }
-
-    func testUploadProcessingVersion() async throws {
-        let appArgs = TestArguments()
-        let app = try await buildApplication(appArgs)
-        let filePath = Bundle.module.path(forResource: "test-package", ofType: "bin")!
-        let testPackageBuffer = try await FileSystem.shared.withFileHandle(forReadingAt: .init(filePath)) { reader in
-            try await reader.readToEnd(maximumSizeAllowed: .unlimited)
-        }
-        try await app.test(.router) { client in
-            let response = try await Self.uploadTestPackage(client, buffer: testPackageBuffer)
-            XCTAssertEqual(response.status, .accepted)
-            XCTAssertNotNil(response.headers[.retryAfter])
-            XCTAssertNotNil(response.headers[.location])
-
-            let response2 = try await Self.uploadTestPackage(client, buffer: testPackageBuffer)
-            XCTAssertEqual(response2.status, .conflict)
-            let problem = try JSONDecoder().decode(Problem.self, from: response2.body)
-            XCTAssertEqual(problem.type, ProblemType.versionAlreadyExists.url)
-        }
-    }
-
-    /// Upload package and test all endpoints referencing it work
+    /// Test uploading sample package and verify different endpoints
     func testUploadedPackage() async throws {
         struct Releases: Codable {
             struct Release: Codable {
