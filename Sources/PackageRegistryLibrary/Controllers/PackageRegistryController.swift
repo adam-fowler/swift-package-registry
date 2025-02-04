@@ -318,7 +318,11 @@ public struct PackageRegistryController<
         /// Parse multipart file, extracting metadata, saving source archive to disk
         let multipartStream = StreamingMultipartParserAsyncSequence(boundary: parameter.value, buffer: request.body.map { $0.readableBytesView })
         var iterator = multipartStream.makeAsyncIterator()
-        guard case .boundary = try await iterator.next() else { throw HTTPError(.badRequest) }
+        do {
+            guard case .boundary = try await iterator.next() else { throw HTTPError(.badRequest) }
+        } catch {
+            throw HTTPError(.badRequest)
+        }
 
         var sourceArchiveDigest: SHA256Digest?
         var sourceArchiveSignature: ByteBuffer?

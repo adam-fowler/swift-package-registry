@@ -19,15 +19,15 @@ struct Problem: Error, Decodable {
     let instance: String?
 }
 
-final class PackageRegistryTests: XCTestCase {
-    struct TestArguments: AppArguments {
-        var hostname: String { "localhost" }
-        var port: Int { 8081 }
-        var inMemory = true
-        var revert = false
-        var migrate = true
-    }
+struct TestArguments: AppArguments {
+    var hostname: String { "localhost" }
+    var port: Int { 8081 }
+    var inMemory = true
+    var revert = false
+    var migrate = true
+}
 
+final class PackageRegistryTests: XCTestCase {
     func testNoAcceptHeader() async throws {
         let app = try await buildApplication(TestArguments())
         try await app.test(.router) { client in
@@ -217,6 +217,16 @@ final class PackageRegistryTests: XCTestCase {
             }
 
             // test metadata
+            try await client.execute(
+                uri: "/registry/test/test-package/0.1.0/Package.swift",
+                method: .get,
+                headers: [.accept: "application/vnd.swift.registry.v1"]
+            ) { response in
+                XCTAssertEqual(response.status, .ok)
+                XCTAssert(String(buffer: response.body).hasPrefix("// swift-tools-version: 6.0"))
+            }
+
+            // test manifest
             try await client.execute(
                 uri: "/registry/test/test-package/0.1.0",
                 method: .get,
