@@ -3,10 +3,11 @@ import Foundation
 import HTTPTypes
 import Hummingbird
 import Jobs
-import MultipartKit
 import NIOFoundationCompat
 import RegexBuilder
 import StructuredFieldValues
+
+@testable import MultipartKit
 
 public struct PackageRegistryController<
     Context: PackageRegistryRequestContext,
@@ -332,14 +333,10 @@ public struct PackageRegistryController<
         loop: while true {
             switch try await iterator.next() {
             case .headerFields(let headers):
-                guard let contentDispositionString = headers[values: .contentDisposition].first else { throw HTTPError(.badRequest) }
-                guard
-                    let contentDisposition = try? StructuredFieldValueDecoder().decode(
-                        MultipartContentDispostion.self,
-                        from: contentDispositionString
-                    )
-                else { throw HTTPError(.badRequest) }
-                switch contentDisposition.parameters.name {
+                guard let contentDisposition = try? headers[.contentDisposition].map({ try ContentDisposition(from: $0) }) else {
+                    throw HTTPError(.badRequest)
+                }
+                switch contentDisposition.name {
                 case "source-archive":
                     try await storage.makeDirectory(sourceArchiveFolder)
                     let multipartBodyAsyncSequence = MultipartBodyAsyncSequence(multipartIterator: iterator)
