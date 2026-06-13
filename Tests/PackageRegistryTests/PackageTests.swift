@@ -54,7 +54,7 @@ struct PackageTests {
             try await multipartWriter.writePart(
                 .init(
                     headerFields: [
-                        .contentDisposition: "form-date; name=\"metadata\"",
+                        .contentDisposition: "form-data; name=\"metadata\"",
                         .contentType: "application/json",
                         .contentTransferEncoding: "quoted-printable",
                     ],
