@@ -26,25 +26,25 @@ extension SignatureProvider {
 
         let now = Date()
         switch (configuration.certificateExpiration, configuration.certificateRevocation) {
-        case (.enabled(let expiryValidationTime), .strict(let revocationValidationTime)):
-            RFC5280Policy(validationTime: expiryValidationTime ?? now)
+        case (.enabled, .strict(let revocationValidationTime)):
+            RFC5280Policy()
             _OCSPVerifierPolicy(
                 failureMode: .hard,
                 httpClient: httpClient,
                 validationTime: revocationValidationTime ?? now
             )
-        case (.enabled(let expiryValidationTime), .allowSoftFail(let revocationValidationTime)):
-            RFC5280Policy(validationTime: expiryValidationTime ?? now)
+        case (.enabled, .allowSoftFail(let revocationValidationTime)):
+            RFC5280Policy()
             _OCSPVerifierPolicy(
                 failureMode: .soft,
                 httpClient: httpClient,
                 validationTime: revocationValidationTime ?? now
             )
-        case (.enabled(let expiryValidationTime), .disabled):
-            RFC5280Policy(validationTime: expiryValidationTime ?? now)
+        case (.enabled, .disabled):
+            RFC5280Policy()
         case (.disabled, .strict(let revocationValidationTime)):
             // Always do expiry check (and before) if revocation check is enabled
-            RFC5280Policy(validationTime: revocationValidationTime ?? now)
+            RFC5280Policy()
             _OCSPVerifierPolicy(
                 failureMode: .hard,
                 httpClient: httpClient,
@@ -52,7 +52,7 @@ extension SignatureProvider {
             )
         case (.disabled, .allowSoftFail(let revocationValidationTime)):
             // Always do expiry check (and before) if revocation check is enabled
-            RFC5280Policy(validationTime: revocationValidationTime ?? now)
+            RFC5280Policy()
             _OCSPVerifierPolicy(
                 failureMode: .soft,
                 httpClient: httpClient,
@@ -128,13 +128,10 @@ struct _OCSPVerifierPolicy: VerifierPolicy {
     ///                 Possible values are `hard` (OCSP request failure and unknown status
     ///                 not allowed) or `soft` (OCSP request failure and unknown status allowed).
     ///     - httpClient: `HTTPClient` that backs`_OCSPRequester` for making OCSP requests.
-    ///     - validationTime: The time used to decide if the OCSP request is relatively recent. It is
-    ///                   considered a failure if the request is too old.
     init(failureMode: OCSPFailureMode, httpClient: HTTPClient, validationTime: Date) {
         self.underlying = OCSPVerifierPolicy(
             failureMode: failureMode,
-            requester: _OCSPRequester(httpClient: httpClient),
-            validationTime: validationTime
+            requester: _OCSPRequester(httpClient: httpClient)
         )
     }
 

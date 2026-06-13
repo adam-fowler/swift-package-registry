@@ -38,41 +38,32 @@ struct PackageTests {
         packageArchive: Bytes,
         packageMetadata: PackageMetadata?,
         boundary: String
-    ) throws -> Bytes {
-        let multipartSerializer = MultipartSerializer(boundary: boundary)
-        let multipartForm: Bytes =
-            if let packageMetadata {
-                try multipartSerializer.serialize(parts: [
-                    .init(
-                        headerFields: [
-                            .contentDisposition: "form-data; name=\"source-archive\"",
-                            .contentType: "application/zip",
-                            .contentTransferEncoding: "binary",
-                        ],
-                        body: packageArchive
-                    ),
-                    .init(
-                        headerFields: [
-                            .contentDisposition: "form-date; name=\"metadata\"",
-                            .contentType: "application/json",
-                            .contentTransferEncoding: "quoted-printable",
-                        ],
-                        body: Bytes(JSONEncoder().encode(packageMetadata))
-                    ),
-                ])
-            } else {
-                try multipartSerializer.serialize(parts: [
-                    .init(
-                        headerFields: [
-                            .contentDisposition: "form-data; name=\"source-archive\"",
-                            .contentType: "application/zip",
-                            .contentTransferEncoding: "binary",
-                        ],
-                        body: packageArchive
-                    )
-                ])
-            }
-        return multipartForm
+    ) async throws -> Bytes {
+        var multipartWriter = MemoryMultipartWriter<Bytes>(boundary: boundary)
+        try await multipartWriter.writePart(
+            .init(
+                headerFields: [
+                    .contentDisposition: "form-data; name=\"source-archive\"",
+                    .contentType: "application/zip",
+                    .contentTransferEncoding: "binary",
+                ],
+                body: packageArchive
+            )
+        )
+        if let packageMetadata {
+            try await multipartWriter.writePart(
+                .init(
+                    headerFields: [
+                        .contentDisposition: "form-data; name=\"metadata\"",
+                        .contentType: "application/json",
+                        .contentTransferEncoding: "quoted-printable",
+                    ],
+                    body: Bytes(JSONEncoder().encode(packageMetadata))
+                )
+            )
+        }
+        try await multipartWriter.finish()
+        return multipartWriter.getResult()
     }
 
     static func uploadTestPackage(
@@ -124,7 +115,7 @@ struct PackageTests {
             originalPublicationTime: nil,
             readmeURL: nil
         )
-        let multipartForm = try createMultipartForm(packageArchive: packageArchive, packageMetadata: packageMetadata, boundary: boundary)
+        let multipartForm = try await createMultipartForm(packageArchive: packageArchive, packageMetadata: packageMetadata, boundary: boundary)
 
         let args = TestArguments()
         let app = try await buildApplication(args)
@@ -148,7 +139,7 @@ struct PackageTests {
     func withoutMetadata() async throws {
         let boundary = UUID().uuidString
         let packageArchive = try createPackageZipArchive(packageId: "test.test-package")
-        let multipartForm = try createMultipartForm(packageArchive: packageArchive, packageMetadata: nil, boundary: boundary)
+        let multipartForm = try await createMultipartForm(packageArchive: packageArchive, packageMetadata: nil, boundary: boundary)
 
         let app = try await buildApplication(TestArguments())
         try await app.test(.router) { client in
@@ -175,7 +166,7 @@ struct PackageTests {
             originalPublicationTime: nil,
             readmeURL: nil
         )
-        let multipartForm = try createMultipartForm(packageArchive: packageArchive, packageMetadata: packageMetadata, boundary: boundary)
+        let multipartForm = try await createMultipartForm(packageArchive: packageArchive, packageMetadata: packageMetadata, boundary: boundary)
 
         let app = try await buildApplication(TestArguments())
         try await app.test(.router) { client in
@@ -225,7 +216,7 @@ struct PackageTests {
             originalPublicationTime: nil,
             readmeURL: nil
         )
-        let multipartForm = try createMultipartForm(packageArchive: packageArchive, packageMetadata: packageMetadata, boundary: boundary)
+        let multipartForm = try await createMultipartForm(packageArchive: packageArchive, packageMetadata: packageMetadata, boundary: boundary)
 
         let args = TestArguments()
         let app = try await buildApplication(args)
@@ -277,7 +268,7 @@ struct PackageTests {
             originalPublicationTime: nil,
             readmeURL: nil
         )
-        let multipartForm = try createMultipartForm(packageArchive: packageArchive, packageMetadata: packageMetadata, boundary: boundary)
+        let multipartForm = try await createMultipartForm(packageArchive: packageArchive, packageMetadata: packageMetadata, boundary: boundary)
 
         let appArgs = TestArguments()
         let app = try await buildApplication(appArgs)
@@ -320,7 +311,7 @@ struct PackageTests {
             originalPublicationTime: nil,
             readmeURL: nil
         )
-        let multipartForm = try createMultipartForm(packageArchive: packageArchive, packageMetadata: packageMetadata, boundary: boundary)
+        let multipartForm = try await createMultipartForm(packageArchive: packageArchive, packageMetadata: packageMetadata, boundary: boundary)
 
         let appArgs = TestArguments()
         let app = try await buildApplication(appArgs)

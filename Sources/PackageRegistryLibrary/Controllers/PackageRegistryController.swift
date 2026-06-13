@@ -14,14 +14,14 @@ public struct PackageRegistryController<
     RegistryStorage: FileStorage,
     PackageReleasesRepo: PackageReleaseRepository,
     ManifestsRepo: ManifestRepository,
-    JQD: JobQueueDriver,
+    JobQueue: JobQueueProtocol,
     KeyValueStore: PersistDriver
 >: Sendable {
     let storage: RegistryStorage
     let packageRepository: PackageReleasesRepo
     let manifestRepository: ManifestsRepo
     let urlRoot: String
-    let jobQueue: JobQueue<JQD>
+    let jobQueue: JobQueue
     let publishStatusManager: PublishStatusManager<KeyValueStore>
 
     public init(
@@ -29,7 +29,7 @@ public struct PackageRegistryController<
         packageRepository: PackageReleasesRepo,
         manifestRepository: ManifestsRepo,
         urlRoot: String,
-        jobQueue: JobQueue<JQD>,
+        jobQueue: JobQueue,
         publishStatusManager: PublishStatusManager<KeyValueStore>
     ) {
         self.storage = storage

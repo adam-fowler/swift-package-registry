@@ -57,15 +57,21 @@ public func buildApplication(_ args: some AppArguments) async throws -> any Appl
             let migrations = DatabaseMigrations()
             await migrations.addPackageRegistryMigrations()
 
-            let jobQueue = await JobQueue(
+            let jobService = await JobService(
                 .postgres(
                     client: postgresClient,
                     migrations: migrations,
-                    configuration: .init(pollTime: .milliseconds(10)),
+                    configuration: .init(retentionPolicy: .init(completedJobs: .retain, failedJobs: .retain)),
                     logger: logger
                 ),
-                numWorkers: 1,
-                logger: logger
+                logger: logger,
+                options: .init(
+                    processor: .init(numWorkers: 1),
+                    cleanup: .init(
+                        jobs: .init(parameters: .init(completedJobs: .remove(maxAge: .seconds(60 * 60 * 24 * 7))), schedule: .weekly(day: .sunday)),
+                        orphaned: .init()
+                    )
+                )
             )
 
             let fileStorage = LocalFileStorage(rootFolder: "registry")
@@ -78,7 +84,7 @@ public func buildApplication(_ args: some AppArguments) async throws -> any Appl
                 https: tlsConfiguration != nil,
                 serverAddress: serverAddress,
                 keyValueStore: keyValueStore,
-                jobQueue: jobQueue,
+                jobQueue: jobService,
                 fileStorage: fileStorage,
                 userRepository: userRepository,
                 packageRepository: packageRepository,
@@ -87,7 +93,7 @@ public func buildApplication(_ args: some AppArguments) async throws -> any Appl
 
             try registerJobs(
                 env: env,
-                jobQueue: jobQueue,
+                jobQueue: jobService,
                 keyValueStore: keyValueStore,
                 fileStorage: fileStorage,
                 httpClient: httpClient,
@@ -96,7 +102,7 @@ public func buildApplication(_ args: some AppArguments) async throws -> any Appl
             )
 
             services.append(postgresClient)
-            services.append(jobQueue)
+            services.append(jobService)
             services.append(keyValueStore)
 
             beforeServerStarts = {
@@ -113,11 +119,12 @@ public func buildApplication(_ args: some AppArguments) async throws -> any Appl
             }
         } else {
             let userRepository = MemoryUserRepository()
-            let jobQueue = JobQueue(
+            var jobService = JobService(
                 .memory,
-                numWorkers: 1,
-                logger: logger
+                logger: logger,
+                options: .init(processor: .init(numWorkers: 1), cleanup: .default)
             )
+            jobService.addScheduledJob("test", parameters: TestJob(), schedule: .weekly(day: .sunday))
             let fileStorage = MemoryFileStorage()
             let keyValueStore = MemoryPersistDriver()
             let packageRepository = MemoryPackageReleaseRepository()
@@ -133,7 +140,7 @@ public func buildApplication(_ args: some AppArguments) async throws -> any Appl
                 https: true,
                 serverAddress: serverAddress,
                 keyValueStore: keyValueStore,
-                jobQueue: jobQueue,
+                jobQueue: jobService,
                 fileStorage: fileStorage,
                 userRepository: userRepository,
                 packageRepository: packageRepository,
@@ -142,7 +149,7 @@ public func buildApplication(_ args: some AppArguments) async throws -> any Appl
 
             try registerJobs(
                 env: env,
-                jobQueue: jobQueue,
+                jobQueue: jobService,
                 keyValueStore: keyValueStore,
                 fileStorage: fileStorage,
                 httpClient: httpClient,
@@ -150,7 +157,7 @@ public func buildApplication(_ args: some AppArguments) async throws -> any Appl
                 manifestRepository: manifestRepository
             )
 
-            services.append(jobQueue)
+            services.append(jobService)
             services.append(keyValueStore)
         }
 
@@ -201,7 +208,7 @@ func buildRouter(
     https: Bool,
     serverAddress: String,
     keyValueStore: some PersistDriver,
-    jobQueue: JobQueue<some JobQueueDriver>,
+    jobQueue: some JobQueueProtocol,
     fileStorage: some FileStorage,
     userRepository: some UserRepository,
     packageRepository: some PackageReleaseRepository,
@@ -246,7 +253,7 @@ func buildRouter(
 
 func registerJobs(
     env: Environment,
-    jobQueue: JobQueue<some JobQueueDriver>,
+    jobQueue: some JobQueueProtocol,
     keyValueStore: some PersistDriver,
     fileStorage: some FileStorage,
     httpClient: HTTPClient,
@@ -271,4 +278,10 @@ func registerJobs(
         httpClient: httpClient,
         packageSignatureVerification: packageSignatureVerification
     ).registerJobs(jobQueue: jobQueue)
+
+    jobQueue.registerJob(parameters: TestJob.self) { _, _ in }
+}
+
+struct TestJob: JobParameters {
+    static let jobName: String = "test"
 }

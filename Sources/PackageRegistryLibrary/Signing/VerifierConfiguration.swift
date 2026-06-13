@@ -2,7 +2,7 @@ import Foundation
 import X509
 
 enum CertificateExpiration {
-    case enabled(validationTime: Date?)
+    case enabled
     case disabled
 }
 
@@ -20,7 +20,7 @@ struct VerifierConfiguration {
     init(
         trustedRoots: [Certificate] = [],
         includeDefaultTrustRoots: Bool = true,
-        certificateExpiration: CertificateExpiration = .enabled(validationTime: .now),
+        certificateExpiration: CertificateExpiration = .enabled,
         certificateRevocation: CertificateRevocation = .allowSoftFail(validationTime: .now)
     ) {
         let defaultTrustRoots = includeDefaultTrustRoots ? Certificates.appleRoots : []
@@ -33,7 +33,7 @@ struct VerifierConfiguration {
     init(
         trustedRoots: [[UInt8]] = [],
         includeDefaultTrustRoots: Bool = true,
-        certificateExpiration: CertificateExpiration = .enabled(validationTime: .now),
+        certificateExpiration: CertificateExpiration = .enabled,
         certificateRevocation: CertificateRevocation = .allowSoftFail(validationTime: .now)
     ) throws {
         self.init(

@@ -40,7 +40,7 @@ public struct PackageSignatureVerification: Sendable {
         .init(
             trustedRoots: trustedRoots,
             includeDefaultTrustRoots: true,
-            certificateExpiration: .enabled(validationTime: .now),
+            certificateExpiration: .enabled,
             certificateRevocation: .allowSoftFail(validationTime: .now)
         )
     }
@@ -75,11 +75,11 @@ public struct PublishJobController<
         self.packageSignatureVerification = packageSignatureVerification
     }
 
-    public func registerJobs(jobQueue: JobQueue<some JobQueueDriver>) {
+    public func registerJobs(jobQueue: some JobQueueProtocol) {
         jobQueue.registerJob(execute: publishPackageJob)
     }
 
-    @Sendable func publishPackageJob(parameters: PublishPackageJob, context: JobContext) async throws {
+    @Sendable func publishPackageJob(parameters: PublishPackageJob, context: JobExecutionContext) async throws {
         do {
             let sourceArchive = try await storage.readFile(parameters.sourceArchiveFile)
             let sourceArchiveData = Data(buffer: sourceArchive, byteTransferStrategy: .noCopy)

@@ -37,12 +37,12 @@ struct CMSSignatureProvider: SignatureProvider {
             let signingEntity = SigningEntity.from(certificate: valid.signer)
             return signingEntity
         case .failure(CMS.VerificationError.unableToValidateSigner(let failure)):
-            if failure.validationFailures.isEmpty {
+            if failure.policyFailures.isEmpty {
                 let signingEntity = SigningEntity.from(certificate: failure.signer)
                 throw SigningError.certificateNotTrusted(signingEntity)
             } else {
                 throw SigningError.certificateInvalid(
-                    "failures: \(failure.validationFailures.map(\.policyFailureReason))"
+                    "failures: \(failure.policyFailures.map(\.policyFailureReason))"
                 )
             }
         case .failure(CMS.VerificationError.invalidCMSBlock(let error)):
@@ -86,7 +86,7 @@ struct CMSSignatureProvider: SignatureProvider {
         // The intermediates supplied here will be combined with those
         // included in the signature to build cert chain for validation.
         let result = await verifier.validate(
-            leafCertificate: signingCertificate,
+            leaf: signingCertificate,
             intermediates: CertificateStore(self.untrustedIntermediates + cmsSignature.certificates)
         )
 
