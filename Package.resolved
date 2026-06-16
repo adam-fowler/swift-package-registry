@@ -1,5 +1,5 @@
 {
-  "originHash" : "c3588328ecd6bbab0872ad79948d5baee256e0b0e83e9a67bdb7674030f122e1",
+  "originHash" : "37142588824ec972a271dfb4c06d4a44b405aa77e8d28552edef5bede7943a1b",
   "pins" : [
     {
       "identity" : "async-http-client",
@@ -186,8 +186,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/hummingbird-project/swift-jobs.git",
       "state" : {
-        "revision" : "ef36caec55eb6daa08cfd331b5ea156d54bde1a7",
-        "version" : "1.3.0"
+        "revision" : "e08d41e91dfa4f129c712bc7081e70befef314d3",
+        "version" : "1.3.1"
       }
     },
     {

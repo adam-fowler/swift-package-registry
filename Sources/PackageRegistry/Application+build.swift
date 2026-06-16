@@ -43,156 +43,149 @@ public func buildApplication(_ args: some AppArguments) async throws -> any Appl
     {
         tlsConfiguration = try getTLSConfiguration(certificateChain: tlsCertificateChain, privateKey: tlsPrivateKey)
     }
-    let httpClient = HTTPClient()
 
-    do {
-        let router: Router<AppRequestContext>
-        var services: [any Service] = [HTTPClientService(client: httpClient)]
-        var beforeServerStarts: (@Sendable () async throws -> Void)?
-        if !args.inMemory {
-            let postgresClient = PostgresClient(
-                configuration: .init(host: "localhost", username: "spruser", password: "spruser", database: "swiftpackageregistry", tls: .disable),
-                backgroundLogger: logger
-            )
-            let migrations = DatabaseMigrations()
-            await migrations.addPackageRegistryMigrations()
+    let router: Router<AppRequestContext>
+    var services: [any Service] = []
+    var beforeServerStarts: (@Sendable () async throws -> Void)?
+    if !args.inMemory {
+        let postgresClient = PostgresClient(
+            configuration: .init(host: "localhost", username: "spruser", password: "spruser", database: "swiftpackageregistry", tls: .disable),
+            backgroundLogger: logger
+        )
+        let migrations = DatabaseMigrations()
+        await migrations.addPackageRegistryMigrations()
 
-            let jobService = await JobService(
-                .postgres(
-                    client: postgresClient,
-                    migrations: migrations,
-                    configuration: .init(retentionPolicy: .init(completedJobs: .retain, failedJobs: .retain)),
-                    logger: logger
-                ),
-                logger: logger,
-                options: .init(
-                    processor: .init(numWorkers: 1),
-                    cleanup: .init(
-                        jobs: .init(parameters: .init(completedJobs: .remove(maxAge: .seconds(60 * 60 * 24 * 7))), schedule: .weekly(day: .sunday)),
-                        orphaned: .init()
-                    )
+        let jobService = await JobService(
+            .postgres(
+                client: postgresClient,
+                migrations: migrations,
+                configuration: .init(retentionPolicy: .init(completedJobs: .retain, failedJobs: .retain)),
+                logger: logger
+            ),
+            logger: logger,
+            options: .init(
+                processor: .init(numWorkers: 1),
+                cleanup: .init(
+                    jobs: .init(parameters: .init(completedJobs: .remove(maxAge: .seconds(60 * 60 * 24 * 7))), schedule: .weekly(day: .sunday)),
+                    orphaned: .init()
                 )
             )
+        )
 
-            let fileStorage = LocalFileStorage(rootFolder: "registry")
-            let keyValueStore = await PostgresPersistDriver(client: postgresClient, migrations: migrations, logger: logger)
-            let userRepository = PostgresUserRepository(client: postgresClient)
-            let packageRepository = PostgresPackageReleaseRepository(client: postgresClient)
-            let manifestRepository = PostgresManifestRepository(client: postgresClient)
+        let fileStorage = LocalFileStorage(rootFolder: "registry")
+        let keyValueStore = await PostgresPersistDriver(client: postgresClient, migrations: migrations, logger: logger)
+        let userRepository = PostgresUserRepository(client: postgresClient)
+        let packageRepository = PostgresPackageReleaseRepository(client: postgresClient)
+        let manifestRepository = PostgresManifestRepository(client: postgresClient)
 
-            router = buildRouter(
-                https: tlsConfiguration != nil,
-                serverAddress: serverAddress,
-                keyValueStore: keyValueStore,
-                jobQueue: jobService,
-                fileStorage: fileStorage,
-                userRepository: userRepository,
-                packageRepository: packageRepository,
-                manifestRepository: manifestRepository
-            )
+        router = buildRouter(
+            https: tlsConfiguration != nil,
+            serverAddress: serverAddress,
+            keyValueStore: keyValueStore,
+            jobQueue: jobService,
+            fileStorage: fileStorage,
+            userRepository: userRepository,
+            packageRepository: packageRepository,
+            manifestRepository: manifestRepository
+        )
 
-            try registerJobs(
-                env: env,
-                jobQueue: jobService,
-                keyValueStore: keyValueStore,
-                fileStorage: fileStorage,
-                httpClient: httpClient,
-                packageRepository: packageRepository,
-                manifestRepository: manifestRepository
-            )
+        try registerJobs(
+            env: env,
+            jobQueue: jobService,
+            keyValueStore: keyValueStore,
+            fileStorage: fileStorage,
+            httpClient: HTTPClient.shared,
+            packageRepository: packageRepository,
+            manifestRepository: manifestRepository
+        )
 
-            services.append(postgresClient)
-            services.append(jobService)
-            services.append(keyValueStore)
+        services.append(postgresClient)
+        services.append(jobService)
+        services.append(keyValueStore)
 
-            beforeServerStarts = {
-                do {
-                    if args.revert {
-                        try await migrations.revert(client: postgresClient, logger: logger, dryRun: false)
-                    }
-                    try await migrations.apply(client: postgresClient, logger: logger, dryRun: !(args.migrate || args.revert))
-                    try await PackageStatus.setDataType(client: postgresClient, logger: logger)
-                } catch {
-                    print(String(reflecting: error))
-                    throw error
+        beforeServerStarts = {
+            do {
+                if args.revert {
+                    try await migrations.revert(client: postgresClient, logger: logger, dryRun: false)
                 }
+                try await migrations.apply(client: postgresClient, logger: logger, dryRun: !(args.migrate || args.revert))
+                try await PackageStatus.setDataType(client: postgresClient, logger: logger)
+            } catch {
+                print(String(reflecting: error))
+                throw error
             }
-        } else {
-            let userRepository = MemoryUserRepository()
-            var jobService = JobService(
-                .memory,
-                logger: logger,
-                options: .init(processor: .init(numWorkers: 1), cleanup: .default)
-            )
-            jobService.addScheduledJob("test", parameters: TestJob(), schedule: .weekly(day: .sunday))
-            let fileStorage = MemoryFileStorage()
-            let keyValueStore = MemoryPersistDriver()
-            let packageRepository = MemoryPackageReleaseRepository()
-            let manifestRepository = MemoryManifestRepository()
-
-            // given everything is new with every run, have to create an admin user every time
-            let password = "Password123"
-            logger.critical("User 'admin' password is \(password)")
-            let passwordHash = try await NIOThreadPool.singleton.runIfActive { Bcrypt.hash("Password123", cost: 12) }
-            try await userRepository.add(user: .init(id: .init(), username: "admin", passwordHash: passwordHash), logger: logger)
-
-            router = buildRouter(
-                https: true,
-                serverAddress: serverAddress,
-                keyValueStore: keyValueStore,
-                jobQueue: jobService,
-                fileStorage: fileStorage,
-                userRepository: userRepository,
-                packageRepository: packageRepository,
-                manifestRepository: manifestRepository
-            )
-
-            try registerJobs(
-                env: env,
-                jobQueue: jobService,
-                keyValueStore: keyValueStore,
-                fileStorage: fileStorage,
-                httpClient: httpClient,
-                packageRepository: packageRepository,
-                manifestRepository: manifestRepository
-            )
-
-            services.append(jobService)
-            services.append(keyValueStore)
         }
+    } else {
+        let userRepository = MemoryUserRepository()
+        let jobService = JobService(
+            .memory,
+            logger: logger,
+            options: .init(processor: .init(numWorkers: 1), cleanup: .default)
+        )
+        let fileStorage = MemoryFileStorage()
+        let keyValueStore = MemoryPersistDriver()
+        let packageRepository = MemoryPackageReleaseRepository()
+        let manifestRepository = MemoryManifestRepository()
 
-        var app: Application<RouterResponder<AppRequestContext>>
-        if let tlsConfiguration {
-            app = try Application(
-                router: router,
-                server: .tls(tlsConfiguration: tlsConfiguration),
-                configuration: .init(
-                    address: .hostname(args.hostname, port: args.port),
-                    serverName: serverAddress
-                ),
-                services: services,
-                logger: logger
-            )
-        } else {
-            app = Application(
-                router: router,
-                configuration: .init(
-                    address: .hostname(args.hostname, port: args.port),
-                    serverName: serverAddress
-                ),
-                services: services,
-                logger: logger
-            )
-        }
+        // given everything is new with every run, have to create an admin user every time
+        let password = "Password123"
+        logger.critical("User 'admin' password is \(password)")
+        let passwordHash = try await NIOThreadPool.singleton.runIfActive { Bcrypt.hash("Password123", cost: 12) }
+        try await userRepository.add(user: .init(id: .init(), username: "admin", passwordHash: passwordHash), logger: logger)
 
-        if let beforeServerStarts {
-            app.beforeServerStarts(perform: beforeServerStarts)
-        }
-        return app
-    } catch {
-        try await httpClient.shutdown()
-        throw error
+        router = buildRouter(
+            https: true,
+            serverAddress: serverAddress,
+            keyValueStore: keyValueStore,
+            jobQueue: jobService,
+            fileStorage: fileStorage,
+            userRepository: userRepository,
+            packageRepository: packageRepository,
+            manifestRepository: manifestRepository
+        )
+
+        try registerJobs(
+            env: env,
+            jobQueue: jobService,
+            keyValueStore: keyValueStore,
+            fileStorage: fileStorage,
+            httpClient: HTTPClient.shared,
+            packageRepository: packageRepository,
+            manifestRepository: manifestRepository
+        )
+
+        services.append(jobService)
+        services.append(keyValueStore)
     }
+
+    var app: Application<RouterResponder<AppRequestContext>>
+    if let tlsConfiguration {
+        app = try Application(
+            router: router,
+            server: .tls(tlsConfiguration: tlsConfiguration),
+            configuration: .init(
+                address: .hostname(args.hostname, port: args.port),
+                serverName: serverAddress
+            ),
+            services: services,
+            logger: logger
+        )
+    } else {
+        app = Application(
+            router: router,
+            configuration: .init(
+                address: .hostname(args.hostname, port: args.port),
+                serverName: serverAddress
+            ),
+            services: services,
+            logger: logger
+        )
+    }
+
+    if let beforeServerStarts {
+        app.beforeServerStarts(perform: beforeServerStarts)
+    }
+    return app
 }
 
 func getTLSConfiguration(certificateChain: String, privateKey: String) throws -> TLSConfiguration {
@@ -278,10 +271,4 @@ func registerJobs(
         httpClient: httpClient,
         packageSignatureVerification: packageSignatureVerification
     ).registerJobs(jobQueue: jobQueue)
-
-    jobQueue.registerJob(parameters: TestJob.self) { _, _ in }
-}
-
-struct TestJob: JobParameters {
-    static let jobName: String = "test"
 }
